@@ -32,7 +32,6 @@ impl MaliciousReentrantToken {
                 &1u64,
                 &String::from_str(&env, "GA"),
                 &String::from_str(&env, "reentrant"),
-                &amount,
             );
         }
     }
@@ -86,22 +85,22 @@ fn purchase_throttle_rejects_rapid_repeat_purchases() {
     token_asset.mint(&buyer, &10_000i128);
 
     env.ledger().set_sequence_number(100);
+    client.set_tier_price(&organizer, &1, &String::from_str(&env, "GA"), &1_000i128);
     client.purchase_primary(
         &buyer,
         &1,
         &String::from_str(&env, "GA"),
         &String::from_str(&env, "1"),
-        &1_000i128,
     );
 
     // Second purchase in the same block (or within 10 ledgers) must be throttled
     env.ledger().set_sequence_number(105);
+    client.set_tier_price(&organizer, &1, &String::from_str(&env, "GA"), &1_000i128);
     let throttled = client.try_purchase_primary(
         &buyer,
         &1,
         &String::from_str(&env, "GA"),
         &String::from_str(&env, "2"),
-        &1_000i128,
     );
     assert_eq!(throttled, Err(Ok(Error::PurchaseTooSoon)));
 }
@@ -116,21 +115,21 @@ fn purchase_throttle_allows_purchase_after_spacing_elapses() {
     token_asset.mint(&buyer, &10_000i128);
 
     env.ledger().set_sequence_number(100);
+    client.set_tier_price(&organizer, &1, &String::from_str(&env, "GA"), &1_000i128);
     client.purchase_primary(
         &buyer,
         &1,
         &String::from_str(&env, "GA"),
         &String::from_str(&env, "1"),
-        &1_000i128,
     );
 
     env.ledger().set_sequence_number(111);
+    client.set_tier_price(&organizer, &1, &String::from_str(&env, "GA"), &1_000i128);
     let ok = client.try_purchase_primary(
         &buyer,
         &1,
         &String::from_str(&env, "GA"),
         &String::from_str(&env, "2"),
-        &1_000i128,
     );
     assert!(ok.is_ok());
 }
@@ -153,12 +152,12 @@ fn purchase_primary_leaves_no_partial_state_when_token_transfer_fails() {
     let buyer = Address::generate(&env);
     let event_before = client.get_event(&1);
 
+    client.set_tier_price(&organizer, &1, &String::from_str(&env, "GA"), &1_000i128);
     let result = client.try_purchase_primary(
         &buyer,
         &1,
         &String::from_str(&env, "GA"),
         &String::from_str(&env, "1"),
-        &1_000i128,
     );
     assert!(
         result.is_err(),
@@ -190,12 +189,12 @@ fn malicious_token_reentrancy_fails_safely_and_preserves_state() {
     let buyer = Address::generate(&env);
     let event_before = client.get_event(&1);
 
+    client.set_tier_price(&organizer, &1, &String::from_str(&env, "GA"), &1_000i128);
     let _ = client.try_purchase_primary(
         &buyer,
         &1,
         &String::from_str(&env, "GA"),
         &String::from_str(&env, "1"),
-        &1_000i128,
     );
 
     // Contract state remains consistent and tickets_issued accurately reflects final state

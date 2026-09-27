@@ -76,4 +76,6 @@ pub enum Error {
     TransferLimitExceeded = 33,
     /// The resale price is below the event's configured resale floor.
     ResalePriceBelowFloor = 34,
+    /// The event has no primary sale price configured for the requested tier.
+    TierPriceNotSet = 35,
 }

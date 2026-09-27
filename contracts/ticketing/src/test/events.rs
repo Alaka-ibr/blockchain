@@ -315,12 +315,12 @@ fn escrowed_primary_sale_holds_funds_in_the_contract() {
     let buyer = Address::generate(&env);
     token_asset.mint(&buyer, &10_000i128);
 
+    client.set_tier_price(&organizer, &1, &String::from_str(&env, "GA"), &2_000i128);
     client.purchase_primary(
         &buyer,
         &1,
         &String::from_str(&env, "GA"),
         &String::from_str(&env, "1"),
-        &2_000i128,
     );
 
     let event = client.get_event(&1);
@@ -337,12 +337,12 @@ fn release_escrow_rejects_before_the_event_ends() {
 
     let buyer = Address::generate(&env);
     token_asset.mint(&buyer, &10_000i128);
+    client.set_tier_price(&organizer, &1, &String::from_str(&env, "GA"), &2_000i128);
     client.purchase_primary(
         &buyer,
         &1,
         &String::from_str(&env, "GA"),
         &String::from_str(&env, "1"),
-        &2_000i128,
     );
 
     env.ledger().set_sequence_number(499);
@@ -358,12 +358,12 @@ fn release_escrow_pays_the_organizer_after_the_event_ends() {
 
     let buyer = Address::generate(&env);
     token_asset.mint(&buyer, &10_000i128);
+    client.set_tier_price(&organizer, &1, &String::from_str(&env, "GA"), &2_000i128);
     client.purchase_primary(
         &buyer,
         &1,
         &String::from_str(&env, "GA"),
         &String::from_str(&env, "1"),
-        &2_000i128,
     );
 
     env.ledger().set_sequence_number(500);
@@ -415,12 +415,12 @@ fn per_event_payment_token_routes_settlement() {
     let buyer = Address::generate(&env);
     token2_asset.mint(&buyer, &5_000i128);
 
+    client.set_tier_price(&organizer, &1, &String::from_str(&env, "GA"), &2_000i128);
     client.purchase_primary(
         &buyer,
         &1,
         &String::from_str(&env, "GA"),
         &String::from_str(&env, "1"),
-        &2_000i128,
     );
 
     assert_eq!(token2.balance(&organizer), 2_000);
@@ -470,7 +470,9 @@ fn create_event_accepts_a_royalty_of_exactly_10_000_bps() {
 #[test]
 fn zero_max_resale_multiplier_event_is_created_but_blocks_all_resale() {
     let (env, client, _token, _token_asset, _admin, organizer) = setup();
-    make_custom_event(&env, &client, &organizer, 1, "Event", "concert", 0, 500, 10_000);
+    make_custom_event(
+        &env, &client, &organizer, 1, "Event", "concert", 0, 500, 10_000,
+    );
     assert_eq!(client.get_event(&1).max_resale_multiplier_bps, 0);
 
     let buyer = Address::generate(&env);
