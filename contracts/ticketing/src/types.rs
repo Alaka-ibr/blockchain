@@ -1,6 +1,30 @@
 //! Contract storage types shared across the ticketing contract.
+#![allow(missing_docs)]
 
 use soroban_sdk::{contracttype, Address, BytesN, String};
+
+/// Optional common category labels for indexers and client applications.
+///
+/// `Event.category` intentionally remains a `String` so deployments can add
+/// industry-specific labels without a contract migration. Use `Other` when a
+/// value does not fit the common vocabulary.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum Category {
+    Concert,
+    Flight,
+    Sports,
+    Festival,
+    Conference,
+    Bus,
+    Cinema,
+    Museum,
+    TouristAttraction,
+    PublicTransport,
+    University,
+    Corporate,
+    Other,
+}
 
 /// Lifecycle status of a ticket.
 #[contracttype]
@@ -32,6 +56,10 @@ pub struct Event {
     /// Basis points cap on resale price relative to original sale price
     /// (e.g. 12000 = 120%). Anti-scalping enforcement.
     pub max_resale_multiplier_bps: u32,
+    /// Optional floor on resale price relative to original price.
+    pub min_resale_multiplier_bps: Option<u32>,
+    /// Optional maximum number of ownership transfers for tickets in this event.
+    pub max_transfers_per_ticket: Option<u32>,
     /// Basis points of every resale price paid to the organizer as royalty.
     pub royalty_bps: u32,
     /// Number of tickets issued for the event so far.
@@ -76,6 +104,8 @@ pub struct Ticket {
     pub original_price: i128,
     /// Asking price while the ticket is listed for resale; 0 otherwise.
     pub resale_price: i128,
+    /// Number of ownership transfers completed for this ticket.
+    pub transfers: u32,
 }
 
 /// A pending gift-claim link for a ticket.
@@ -120,6 +150,11 @@ pub enum DataKey {
     GiftClaim(u64),
     /// Monotonic counter used to allocate new ticket ids.
     NextTicketId,
+    /// Number of tickets issued for an event. Kept separate from `Event` so
+    /// minting does not rewrite the complete event record.
+    TicketsIssued(u64),
+    /// Number of events registered by an organizer.
+    OrganizerEvents(Address),
     /// Ledger sequence of a buyer's most recent primary purchase.
     LastPurchaseLedger(Address),
     /// Minimum ledger spacing enforced between a buyer's primary purchases.

@@ -4,6 +4,11 @@ Full signatures are in
 [`contracts/ticketing/src/lib.rs`](../contracts/ticketing/src/lib.rs);
 this is a quick-reference summary.
 
+`get_ticket` and the legacy `verify_ticket` implementation return the same
+`Ticket` record and error codes. `get_ticket` is the canonical Soroban naming
+convention; `verify_ticket` is deprecated but remains available so existing
+clients do not break. It may be removed only in a future breaking deployment.
+
 | Function | Caller | Effect |
 |---|---|---|
 | `initialize(admin, payment_token)` | admin | One-time setup |
@@ -11,7 +16,8 @@ this is a quick-reference summary.
 | `issue_ticket(organizer, event_id, to, tier, seat, price)` | organizer | Mints a ticket (off-chain payment already settled) |
 | `purchase_primary(buyer, event_id, tier, seat, price)` | buyer | On-chain primary sale + mint |
 | `transfer_ticket(from, ticket_id, to)` | owner | Direct transfer |
-| `verify_ticket(ticket_id)` | anyone | Read-only lookup |
+| `get_ticket(ticket_id)` | anyone | Canonical read-only ticket lookup |
+| `verify_ticket(ticket_id)` | anyone | Deprecated compatibility alias for `get_ticket` |
 | `check_in(organizer, ticket_id)` | organizer | Marks used, one-way |
 | `revoke_ticket(organizer, ticket_id)` | organizer | Permanently voids |
 | `revoke_with_refund(organizer, ticket_id, refund)` | organizer | Voids a ticket, optionally paying the original price back to the owner in the event's accepted payment token |
@@ -23,9 +29,11 @@ this is a quick-reference summary.
 | `buy_resale(buyer, ticket_id)` | buyer | Buys a listing, splits royalty |
 | `get_event(event_id)` | anyone | Read-only event lookup |
 | `get_ticket(ticket_id)` | anyone | Read-only ticket lookup |
+| `get_organizer_events(organizer)` | anyone | Number of events registered by an organizer |
 
 ## Error codes
 
-See the `Error` enum in `lib.rs` for the full list; each variant maps
-to a specific precondition failure (e.g. `AlreadyUsed`, `NotOwner`,
-`ResalePriceExceedsCap`).
+See [`ERRORS.md`](ERRORS.md) for the full table of every `Error` variant
+(1–34), which entry points return each one, and whether it is worth
+retrying. The enum itself lives in
+[`contracts/ticketing/src/error.rs`](../contracts/ticketing/src/error.rs).
