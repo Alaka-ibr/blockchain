@@ -186,6 +186,15 @@ impl TicketingContract {
         env.storage().persistent().set(&key, &event);
         env.storage()
             .persistent()
+            .set(&DataKey::TicketsIssued(event_id), &0u64);
+        env.storage().persistent().extend_ttl(
+            &DataKey::TicketsIssued(event_id),
+            LEDGER_THRESHOLD,
+            LEDGER_BUMP,
+        );
+        Self::increment_organizer_events(&env, &event.organizer);
+        env.storage()
+            .persistent()
             .extend_ttl(&key, LEDGER_THRESHOLD, LEDGER_BUMP);
         Ok(())
     }
@@ -238,6 +247,15 @@ impl TicketingContract {
         env.storage().persistent().set(&key, &event);
         env.storage()
             .persistent()
+            .set(&DataKey::TicketsIssued(event_id), &0u64);
+        env.storage().persistent().extend_ttl(
+            &DataKey::TicketsIssued(event_id),
+            LEDGER_THRESHOLD,
+            LEDGER_BUMP,
+        );
+        Self::increment_organizer_events(&env, &event.organizer);
+        env.storage()
+            .persistent()
             .extend_ttl(&key, LEDGER_THRESHOLD, LEDGER_BUMP);
         Ok(())
     }
@@ -265,7 +283,7 @@ impl TicketingContract {
                 }
             }
         }
-        let mut event = Self::get_event(&env, event_id)?;
+        let event = Self::get_event_inner(&env, event_id)?;
         if event.organizer != organizer {
             return Err(Error::NotOrganizer);
         }
@@ -285,10 +303,7 @@ impl TicketingContract {
             ticket_ids.push_back(ticket_id);
         }
 
-        event.tickets_issued += winner_count as u64;
-        env.storage()
-            .persistent()
-            .set(&DataKey::Event(event_id), &event);
+        Self::increment_tickets_issued(&env, event_id, winner_count as u64);
         Ok(ticket_ids)
     }
 
@@ -305,7 +320,7 @@ impl TicketingContract {
         escrow_release_ledger: u32,
     ) -> Result<(), Error> {
         organizer.require_auth();
-        let mut event = Self::get_event(&env, event_id)?;
+        let mut event = Self::get_event_inner(&env, event_id)?;
         if event.organizer != organizer {
             return Err(Error::NotOrganizer);
         }
@@ -333,7 +348,7 @@ impl TicketingContract {
         token: Option<Address>,
     ) -> Result<(), Error> {
         organizer.require_auth();
-        let mut event = Self::get_event(&env, event_id)?;
+        let mut event = Self::get_event_inner(&env, event_id)?;
         if event.organizer != organizer {
             return Err(Error::NotOrganizer);
         }
@@ -354,7 +369,7 @@ impl TicketingContract {
     /// when one is set, otherwise the contract-wide payment token
     /// (issue #235).
     pub fn event_payment_token(env: Env, event_id: u64) -> Result<Address, Error> {
-        let event = Self::get_event(&env, event_id)?;
+        let event = Self::get_event_inner(&env, event_id)?;
         Self::payment_token_for_event(&env, &event)
     }
 
@@ -373,15 +388,12 @@ impl TicketingContract {
         if price < 0 {
             return Err(Error::InvalidPrice);
         }
-        let mut event = Self::get_event(&env, event_id)?;
+        let event = Self::get_event_inner(&env, event_id)?;
         if event.organizer != organizer {
             return Err(Error::NotOrganizer);
         }
         let ticket_id = Self::mint(&env, event_id, to, tier, seat, price);
-        event.tickets_issued += 1;
-        env.storage()
-            .persistent()
-            .set(&DataKey::Event(event_id), &event);
+        Self::increment_tickets_issued(&env, event_id, 1);
         Ok(ticket_id)
     }
 
@@ -400,7 +412,7 @@ impl TicketingContract {
             return Err(Error::InvalidPrice);
         }
         Self::enforce_purchase_throttle(&env, &buyer)?;
-        let mut event = Self::get_event(&env, event_id)?;
+        let mut event = Self::get_event_inner(&env, event_id)?;
         let token_client = token::Client::new(&env, &Self::payment_token_for_event(&env, &event)?);
         if price > 0 {
             if event.escrow_enabled {
@@ -411,10 +423,7 @@ impl TicketingContract {
             }
         }
         let ticket_id = Self::mint(&env, event_id, buyer.clone(), tier, seat, price);
-        event.tickets_issued += 1;
-        env.storage()
-            .persistent()
-            .set(&DataKey::Event(event_id), &event);
+        Self::increment_tickets_issued(&env, event_id, 1);
         Self::record_purchase(&env, &buyer);
         Ok(ticket_id)
     }
@@ -425,7 +434,7 @@ impl TicketingContract {
     /// ended).
     pub fn release_escrow(env: Env, organizer: Address, event_id: u64) -> Result<(), Error> {
         organizer.require_auth();
-        let mut event = Self::get_event(&env, event_id)?;
+        let mut event = Self::get_event_inner(&env, event_id)?;
         if event.organizer != organizer {
             return Err(Error::NotOrganizer);
         }
@@ -475,7 +484,7 @@ impl TicketingContract {
         to: Address,
     ) -> Result<(), Error> {
         from.require_auth();
-        let mut ticket = Self::get_ticket(&env, ticket_id)?;
+        let mut ticket = Self::get_ticket_inner(&env, ticket_id)?;
         if ticket.owner != from {
             return Err(Error::NotOwner);
         }
@@ -484,7 +493,7 @@ impl TicketingContract {
             TicketStatus::Revoked => return Err(Error::Revoked),
             _ => {}
         }
-        let event = Self::get_event(&env, ticket.event_id)?;
+        let event = Self::get_event_inner(&env, ticket.event_id)?;
         Self::ensure_transfer_allowed(&ticket, &event)?;
         if Self::transfer_frozen(&env, &event) {
             return Err(Error::TransfersFrozen);
@@ -514,7 +523,7 @@ impl TicketingContract {
             return Err(Error::BatchTooLarge);
         }
         for ticket_id in ticket_ids.iter() {
-            let mut ticket = Self::get_ticket(&env, ticket_id)?;
+            let mut ticket = Self::get_ticket_inner(&env, ticket_id)?;
             if ticket.owner != from {
                 return Err(Error::NotOwner);
             }
@@ -523,7 +532,7 @@ impl TicketingContract {
                 TicketStatus::Revoked => return Err(Error::Revoked),
                 _ => {}
             }
-            let event = Self::get_event(&env, ticket.event_id)?;
+            let event = Self::get_event_inner(&env, ticket.event_id)?;
             if Self::transfer_frozen(&env, &event) {
                 return Err(Error::TransfersFrozen);
             }
@@ -552,7 +561,7 @@ impl TicketingContract {
             return Err(Error::InvalidExpiry);
         }
 
-        let mut ticket = Self::get_ticket(&env, ticket_id)?;
+        let mut ticket = Self::get_ticket_inner(&env, ticket_id)?;
         if ticket.owner != owner {
             return Err(Error::NotOwner);
         }
@@ -602,7 +611,7 @@ impl TicketingContract {
             return Err(Error::InvalidSecret);
         }
 
-        let mut ticket = Self::get_ticket(&env, ticket_id)?;
+        let mut ticket = Self::get_ticket_inner(&env, ticket_id)?;
         if ticket.owner != claim.from {
             return Err(Error::NotOwner);
         }
@@ -612,7 +621,7 @@ impl TicketingContract {
             _ => {}
         }
 
-        let event = Self::get_event(&env, ticket.event_id)?;
+        let event = Self::get_event_inner(&env, ticket.event_id)?;
         if Self::transfer_frozen(&env, &event) {
             return Err(Error::TransfersFrozen);
         }
@@ -631,7 +640,7 @@ impl TicketingContract {
     /// Any scanner/app can call this without authentication to confirm a
     /// ticket's current owner and status before admitting entry.
     pub fn verify_ticket(env: Env, ticket_id: u64) -> Result<Ticket, Error> {
-        Self::get_ticket(&env, ticket_id)
+        Self::get_ticket_inner(&env, ticket_id)
     }
 
     /// Read-only on-chain batch verification of tickets.
@@ -646,7 +655,7 @@ impl TicketingContract {
         }
         let mut tickets = Vec::new(&env);
         for ticket_id in ticket_ids.iter() {
-            tickets.push_back(Self::get_ticket(&env, ticket_id)?);
+            tickets.push_back(Self::get_ticket_inner(&env, ticket_id)?);
         }
         Ok(tickets)
     }
@@ -656,8 +665,8 @@ impl TicketingContract {
     /// signer) may check a ticket in, and only once.
     pub fn check_in(env: Env, organizer: Address, ticket_id: u64) -> Result<(), Error> {
         organizer.require_auth();
-        let mut ticket = Self::get_ticket(&env, ticket_id)?;
-        let event = Self::get_event(&env, ticket.event_id)?;
+        let mut ticket = Self::get_ticket_inner(&env, ticket_id)?;
+        let event = Self::get_event_inner(&env, ticket.event_id)?;
         if event.organizer != organizer {
             return Err(Error::NotOrganizer);
         }
@@ -688,8 +697,8 @@ impl TicketingContract {
             return Err(Error::BatchTooLarge);
         }
         for ticket_id in ticket_ids.iter() {
-            let mut ticket = Self::get_ticket(&env, ticket_id)?;
-            let event = Self::get_event(&env, ticket.event_id)?;
+            let mut ticket = Self::get_ticket_inner(&env, ticket_id)?;
+            let event = Self::get_event_inner(&env, ticket.event_id)?;
             if event.organizer != organizer {
                 return Err(Error::NotOrganizer);
             }
@@ -715,8 +724,8 @@ impl TicketingContract {
     /// resold, or checked in again.
     pub fn revoke_ticket(env: Env, organizer: Address, ticket_id: u64) -> Result<(), Error> {
         organizer.require_auth();
-        let mut ticket = Self::get_ticket(&env, ticket_id)?;
-        let event = Self::get_event(&env, ticket.event_id)?;
+        let mut ticket = Self::get_ticket_inner(&env, ticket_id)?;
+        let event = Self::get_event_inner(&env, ticket.event_id)?;
         if event.organizer != organizer {
             return Err(Error::NotOrganizer);
         }
@@ -735,8 +744,8 @@ impl TicketingContract {
         seat: String,
     ) -> Result<(), Error> {
         organizer.require_auth();
-        let mut ticket = Self::get_ticket(&env, ticket_id)?;
-        let event = Self::get_event(&env, ticket.event_id)?;
+        let mut ticket = Self::get_ticket_inner(&env, ticket_id)?;
+        let event = Self::get_event_inner(&env, ticket.event_id)?;
         if event.organizer != organizer {
             return Err(Error::NotOrganizer);
         }
@@ -761,8 +770,8 @@ impl TicketingContract {
         refund: bool,
     ) -> Result<(), Error> {
         organizer.require_auth();
-        let mut ticket = Self::get_ticket(&env, ticket_id)?;
-        let event = Self::get_event(&env, ticket.event_id)?;
+        let mut ticket = Self::get_ticket_inner(&env, ticket_id)?;
+        let event = Self::get_event_inner(&env, ticket.event_id)?;
         if event.organizer != organizer {
             return Err(Error::NotOrganizer);
         }
@@ -791,8 +800,8 @@ impl TicketingContract {
             return Err(Error::BatchTooLarge);
         }
         for ticket_id in ticket_ids.iter() {
-            let mut ticket = Self::get_ticket(&env, ticket_id)?;
-            let event = Self::get_event(&env, ticket.event_id)?;
+            let mut ticket = Self::get_ticket_inner(&env, ticket_id)?;
+            let event = Self::get_event_inner(&env, ticket.event_id)?;
             if event.organizer != organizer {
                 return Err(Error::NotOrganizer);
             }
@@ -816,7 +825,7 @@ impl TicketingContract {
         if price <= 0 {
             return Err(Error::InvalidPrice);
         }
-        let mut ticket = Self::get_ticket(&env, ticket_id)?;
+        let mut ticket = Self::get_ticket_inner(&env, ticket_id)?;
         if ticket.owner != owner {
             return Err(Error::NotOwner);
         }
@@ -825,7 +834,7 @@ impl TicketingContract {
             TicketStatus::Revoked => return Err(Error::Revoked),
             _ => {}
         }
-        let event = Self::get_event(&env, ticket.event_id)?;
+        let event = Self::get_event_inner(&env, ticket.event_id)?;
         if Self::resale_closed(&env, &event) {
             return Err(Error::ResaleClosed);
         }
@@ -854,7 +863,7 @@ impl TicketingContract {
     /// Returns `Error::NotForResale` if the ticket is not currently listed for resale.
     pub fn cancel_resale(env: Env, owner: Address, ticket_id: u64) -> Result<(), Error> {
         owner.require_auth();
-        let mut ticket = Self::get_ticket(&env, ticket_id)?;
+        let mut ticket = Self::get_ticket_inner(&env, ticket_id)?;
         if ticket.owner != owner {
             return Err(Error::NotOwner);
         }
@@ -872,11 +881,11 @@ impl TicketingContract {
     /// seller, then ownership transfers to the buyer.
     pub fn buy_resale(env: Env, buyer: Address, ticket_id: u64) -> Result<(), Error> {
         buyer.require_auth();
-        let mut ticket = Self::get_ticket(&env, ticket_id)?;
+        let mut ticket = Self::get_ticket_inner(&env, ticket_id)?;
         if ticket.status != TicketStatus::Resale {
             return Err(Error::NotForResale);
         }
-        let event = Self::get_event(&env, ticket.event_id)?;
+        let event = Self::get_event_inner(&env, ticket.event_id)?;
         if Self::resale_closed(&env, &event) {
             return Err(Error::ResaleClosed);
         }
@@ -904,11 +913,8 @@ impl TicketingContract {
     /// # Errors
     ///
     /// Returns `Error::EventNotFound` when no event with `event_id` exists.
-    pub fn get_event(env: &Env, event_id: u64) -> Result<Event, Error> {
-        env.storage()
-            .persistent()
-            .get(&DataKey::Event(event_id))
-            .ok_or(Error::EventNotFound)
+    pub fn get_event(env: Env, event_id: u64) -> Result<Event, Error> {
+        Self::get_event_inner(&env, event_id)
     }
 
     /// Fetches a ticket by its id.
@@ -916,11 +922,61 @@ impl TicketingContract {
     /// # Errors
     ///
     /// Returns `Error::TicketNotFound` when no ticket with `ticket_id` exists.
-    pub fn get_ticket(env: &Env, ticket_id: u64) -> Result<Ticket, Error> {
+    pub fn get_ticket(env: Env, ticket_id: u64) -> Result<Ticket, Error> {
+        Self::get_ticket_inner(&env, ticket_id)
+    }
+
+    /// Returns the number of events registered by `organizer`.
+    pub fn get_organizer_events(env: Env, organizer: Address) -> u32 {
+        env.storage()
+            .persistent()
+            .get(&DataKey::OrganizerEvents(organizer))
+            .unwrap_or(0)
+    }
+
+    fn get_event_inner(env: &Env, event_id: u64) -> Result<Event, Error> {
+        let mut event: Event = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Event(event_id))
+            .ok_or(Error::EventNotFound)?;
+        // The fallback keeps events created before the counter migration
+        // readable; all newly created events have their own counter key.
+        event.tickets_issued = env
+            .storage()
+            .persistent()
+            .get(&DataKey::TicketsIssued(event_id))
+            .unwrap_or(event.tickets_issued);
+        Ok(event)
+    }
+
+    fn get_ticket_inner(env: &Env, ticket_id: u64) -> Result<Ticket, Error> {
         env.storage()
             .persistent()
             .get(&DataKey::Ticket(ticket_id))
             .ok_or(Error::TicketNotFound)
+    }
+
+    fn increment_tickets_issued(env: &Env, event_id: u64, amount: u64) {
+        let key = DataKey::TicketsIssued(event_id);
+        let current = env.storage().persistent().get(&key).unwrap_or(0u64);
+        env.storage()
+            .persistent()
+            .set(&key, &current.saturating_add(amount));
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, LEDGER_THRESHOLD, LEDGER_BUMP);
+    }
+
+    fn increment_organizer_events(env: &Env, organizer: &Address) {
+        let key = DataKey::OrganizerEvents(organizer.clone());
+        let count = env.storage().persistent().get(&key).unwrap_or(0u32);
+        env.storage()
+            .persistent()
+            .set(&key, &count.saturating_add(1));
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, LEDGER_THRESHOLD, LEDGER_BUMP);
     }
 
     fn save_ticket(env: &Env, ticket_id: u64, ticket: &Ticket) {
