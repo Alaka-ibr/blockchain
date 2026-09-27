@@ -1,7 +1,11 @@
 # On-chain events
 
-The contract publishes two Soroban events, defined with
+The contract publishes Soroban events, defined with
 `#[contractevent]` in `lib.rs`:
+
+Failed calls do not publish failure events. Soroban rolls back the complete
+failed transaction, including its events; see [`ERRORS.md`](ERRORS.md) for
+the structured-error decision and recommended off-chain context.
 
 ## `TicketIssued`
 

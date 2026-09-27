@@ -69,3 +69,12 @@ jobs:
           wasm_size=$(stat -c%s "$wasm_path")
           echo "WASM size: ${wasm_size} bytes (limit: ${WASM_MAX_BYTES} bytes)"
           test "$wasm_size" -le "$WASM_MAX_BYTES"
+
+  cargo-deny:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check advisories and licenses
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check

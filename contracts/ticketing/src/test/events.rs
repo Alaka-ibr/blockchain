@@ -194,8 +194,8 @@ fn events_with_identical_names_have_independent_state() {
     assert_eq!(client.get_event(&102u64).tickets_issued, 1);
 
     client.check_in(&organizer, &ticket1);
-    assert_eq!(client.verify_ticket(&ticket1).status, TicketStatus::Used);
-    assert_eq!(client.verify_ticket(&ticket2).status, TicketStatus::Valid);
+    assert_eq!(client.get_ticket(&ticket1).status, TicketStatus::Used);
+    assert_eq!(client.get_ticket(&ticket2).status, TicketStatus::Valid);
 }
 
 #[test]
@@ -234,7 +234,7 @@ fn events_and_tickets_with_unicode_names_and_categories() {
         &8_888i128,
     );
 
-    let ticket = client.verify_ticket(&ticket_id);
+    let ticket = client.get_ticket(&ticket_id);
     assert_eq!(ticket.tier, unicode_tier);
     assert_eq!(ticket.seat, unicode_seat);
     assert_eq!(ticket.owner, buyer);

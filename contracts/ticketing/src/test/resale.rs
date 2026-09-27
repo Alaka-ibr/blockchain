@@ -18,7 +18,7 @@ fn resale_listing_rejects_prices_above_cap() {
     assert_eq!(too_high, Err(Ok(Error::ResalePriceExceedsCap)));
 
     client.list_for_resale(&buyer, &ticket_id, &1_200i128);
-    let ticket = client.verify_ticket(&ticket_id);
+    let ticket = client.get_ticket(&ticket_id);
     assert_eq!(ticket.status, TicketStatus::Resale);
     assert_eq!(ticket.resale_price, 1_200);
 }
@@ -38,10 +38,7 @@ fn resale_price_exactly_at_the_face_value_cap_is_allowed() {
     );
 
     client.list_for_resale(&buyer, &ticket_id, &1_200i128);
-    assert_eq!(
-        client.verify_ticket(&ticket_id).status,
-        TicketStatus::Resale
-    );
+    assert_eq!(client.get_ticket(&ticket_id).status, TicketStatus::Resale);
 }
 
 #[test]
@@ -95,7 +92,7 @@ fn cancel_resale_returns_a_ticket_to_valid() {
     client.list_for_resale(&seller, &ticket_id, &1_100i128);
     client.cancel_resale(&seller, &ticket_id);
 
-    let ticket = client.verify_ticket(&ticket_id);
+    let ticket = client.get_ticket(&ticket_id);
     assert_eq!(ticket.status, TicketStatus::Valid);
     assert_eq!(ticket.resale_price, 0);
 }
@@ -142,7 +139,7 @@ fn buy_resale_splits_royalty_and_transfers_ownership() {
     assert_eq!(token.balance(&seller), 1_045);
     assert_eq!(token.balance(&buyer), 10_000 - 1_100);
 
-    let ticket = client.verify_ticket(&ticket_id);
+    let ticket = client.get_ticket(&ticket_id);
     assert_eq!(ticket.owner, buyer);
     assert_eq!(ticket.status, TicketStatus::Valid);
     assert_eq!(ticket.resale_price, 0);
@@ -218,7 +215,7 @@ fn transferring_a_resale_listed_ticket_clears_the_listing_state() {
     client.list_for_resale(&seller, &ticket_id, &1_100i128);
     client.transfer_ticket(&seller, &ticket_id, &friend);
 
-    let ticket = client.verify_ticket(&ticket_id);
+    let ticket = client.get_ticket(&ticket_id);
     assert_eq!(ticket.status, TicketStatus::Valid);
     assert_eq!(ticket.resale_price, 0);
     assert_eq!(ticket.owner, friend);
@@ -272,7 +269,7 @@ fn gift_claim_creation_cancels_an_existing_resale_listing() {
 
     client.create_gift_claim(&owner, &ticket_id, &secret_hash, &5_000u64);
 
-    let ticket = client.verify_ticket(&ticket_id);
+    let ticket = client.get_ticket(&ticket_id);
     assert_eq!(ticket.status, TicketStatus::Valid);
     assert_eq!(ticket.resale_price, 0);
 }
@@ -321,19 +318,19 @@ fn list_for_resale_after_cancel_succeeds_and_allows_purchase() {
 
     // Initial listing
     client.list_for_resale(&seller, &ticket_id, &1_100i128);
-    let ticket_listed = client.verify_ticket(&ticket_id);
+    let ticket_listed = client.get_ticket(&ticket_id);
     assert_eq!(ticket_listed.status, TicketStatus::Resale);
     assert_eq!(ticket_listed.resale_price, 1_100i128);
 
     // Cancel resale
     client.cancel_resale(&seller, &ticket_id);
-    let ticket_cancelled = client.verify_ticket(&ticket_id);
+    let ticket_cancelled = client.get_ticket(&ticket_id);
     assert_eq!(ticket_cancelled.status, TicketStatus::Valid);
     assert_eq!(ticket_cancelled.resale_price, 0i128);
 
     // Re-list for resale with updated price
     client.list_for_resale(&seller, &ticket_id, &1_150i128);
-    let ticket_relisted = client.verify_ticket(&ticket_id);
+    let ticket_relisted = client.get_ticket(&ticket_id);
     assert_eq!(ticket_relisted.status, TicketStatus::Resale);
     assert_eq!(ticket_relisted.resale_price, 1_150i128);
 
@@ -341,7 +338,7 @@ fn list_for_resale_after_cancel_succeeds_and_allows_purchase() {
     token_asset.mint(&buyer, &10_000i128);
     client.buy_resale(&buyer, &ticket_id);
 
-    let ticket_bought = client.verify_ticket(&ticket_id);
+    let ticket_bought = client.get_ticket(&ticket_id);
     assert_eq!(ticket_bought.owner, buyer);
     assert_eq!(ticket_bought.status, TicketStatus::Valid);
     assert_eq!(ticket_bought.resale_price, 0i128);
@@ -427,7 +424,7 @@ fn consecutive_resales_of_same_ticket() {
     token_asset.mint(&buyer1, &10000i128);
     client.buy_resale(&buyer1, &ticket_id);
 
-    let ticket1 = client.verify_ticket(&ticket_id);
+    let ticket1 = client.get_ticket(&ticket_id);
     assert_eq!(ticket1.owner, buyer1);
     assert_eq!(ticket1.resale_price, 0);
 
@@ -436,7 +433,7 @@ fn consecutive_resales_of_same_ticket() {
     token_asset.mint(&buyer2, &10000i128);
     client.buy_resale(&buyer2, &ticket_id);
 
-    let ticket2 = client.verify_ticket(&ticket_id);
+    let ticket2 = client.get_ticket(&ticket_id);
     assert_eq!(ticket2.owner, buyer2);
     assert_eq!(ticket2.resale_price, 0);
 }

@@ -56,7 +56,7 @@ fn verify_ticket_stays_under_cost_thresholds() {
         &1_000i128,
     );
 
-    client.verify_ticket(&ticket_id);
+    client.get_ticket(&ticket_id);
     assert_budget_under_thresholds(&env);
 }
 
