@@ -634,6 +634,16 @@ impl TicketingContract {
         Self::get_ticket(&env, ticket_id)
     }
 
+    /// Returns whether a ticket exists, belongs to `owner`, and is valid for
+    /// entry. Missing tickets return `false` so scanners can use this as a
+    /// single boolean check without handling a contract error.
+    pub fn is_valid(env: Env, ticket_id: u64, owner: Address) -> bool {
+        match Self::get_ticket(&env, ticket_id) {
+            Ok(ticket) => ticket.owner == owner && ticket.status == TicketStatus::Valid,
+            Err(_) => false,
+        }
+    }
+
     /// Read-only on-chain batch verification of tickets.
     /// Allows scanners to inspect multiple tickets in one call.
     /// Bounded by `MAX_BATCH_SIZE`.
