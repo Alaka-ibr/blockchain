@@ -102,6 +102,12 @@ impl TicketingContract {
         Self::validate_label(category, MAX_CATEGORY_LEN)
     }
 
+    /// Ticket label validation: non-empty, length-bounded tier and seat.
+    fn validate_ticket_labels(tier: &String, seat: &String) -> Result<(), Error> {
+        Self::validate_label(tier, MAX_TICKET_LABEL_LEN)?;
+        Self::validate_label(seat, MAX_TICKET_LABEL_LEN)
+    }
+
     /// Step one of a payment token change: the admin proposes a new token,
     /// which can only be applied after `PAYMENT_TOKEN_CHANGE_DELAY_LEDGERS`.
     /// A new proposal replaces any pending one. Proceeds already held in
@@ -437,6 +443,9 @@ impl TicketingContract {
         if price < 0 {
             return Err(Error::InvalidPrice);
         }
+        // Issue #126: bound tier/seat so they cannot inflate per-ticket
+        // storage cost and rent.
+        Self::validate_ticket_labels(&tier, &seat)?;
         let event = Self::get_event_inner(&env, event_id)?;
         if event.organizer != organizer {
             return Err(Error::NotOrganizer);
@@ -514,6 +523,10 @@ impl TicketingContract {
     ) -> Result<u64, Error> {
         Self::extend_instance_ttl(&env);
         buyer.require_auth();
+        // Issue #126: bound tier/seat so they cannot inflate per-ticket
+        // storage cost and rent. Validated before the throttle and the tier
+        // price lookup so an oversized label is rejected on its own terms.
+        Self::validate_ticket_labels(&tier, &seat)?;
         Self::enforce_purchase_throttle(&env, &buyer)?;
         let mut event = Self::get_event_inner(&env, event_id)?;
         let price = Self::tier_price(&env, event_id, &tier)?;
