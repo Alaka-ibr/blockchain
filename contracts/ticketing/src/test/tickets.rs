@@ -64,8 +64,8 @@ fn reading_a_ticket_does_not_extend_its_ttl() {
     let instance_ttl_after =
         env.as_contract(&contract_address, || env.storage().instance().get_ttl());
 
-    assert!(ticket_ttl_after > ticket_ttl_before);
-    assert!(instance_ttl_after > instance_ttl_before);
+    assert_eq!(ticket_ttl_after, ticket_ttl_before);
+    assert_eq!(instance_ttl_after, instance_ttl_before);
 }
 
 /// Read paths deliberately do not bump TTL.
@@ -93,7 +93,7 @@ fn reading_an_event_does_not_extend_its_ttl() {
     let instance_ttl_after =
         env.as_contract(&contract_address, || env.storage().instance().get_ttl());
 
-    assert!(instance_ttl_after > instance_ttl_before);
+    assert_eq!(instance_ttl_after, instance_ttl_before);
 }
 
 #[test]

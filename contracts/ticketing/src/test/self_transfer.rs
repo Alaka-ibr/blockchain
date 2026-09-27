@@ -114,9 +114,10 @@ fn self_purchase_leaves_the_listing_intact() {
 
 #[test]
 fn buy_resale_still_allows_a_third_party_purchase() {
-    let (env, client, _token, _token_asset, _admin, organizer) = setup();
+    let (env, client, _token, token_asset, _admin, organizer) = setup();
     let (_seller, ticket_id) = listed_ticket(&env, &client, &organizer);
     let buyer = Address::generate(&env);
+    mint_tokens(&token_asset, &buyer, 1_200);
 
     client.buy_resale(&buyer, &ticket_id);
 

@@ -37,7 +37,7 @@ const LEDGER_THRESHOLD: u32 = 500_000;
 /// Validating business rules before auth would leak that information to an
 /// unauthenticated caller through which error is returned. Keep this order
 /// when adding new entry points. See
-/// `require_auth_runs_before_business_validation` in `test.rs` for the
+/// `require_auth_runs_before_business_validation` in `test/auth.rs` for the
 /// regression test.
 #[allow(missing_docs)]
 #[contract]
@@ -1134,7 +1134,6 @@ impl TicketingContract {
     ///
     /// Returns `Error::EventNotFound` when no event with `event_id` exists.
     pub fn get_event(env: Env, event_id: u64) -> Result<Event, Error> {
-        Self::extend_instance_ttl(&env);
         Self::get_event_inner(&env, event_id)
     }
 
@@ -1144,7 +1143,6 @@ impl TicketingContract {
     ///
     /// Returns `Error::TicketNotFound` when no ticket with `ticket_id` exists.
     pub fn get_ticket(env: Env, ticket_id: u64) -> Result<Ticket, Error> {
-        Self::extend_instance_ttl(&env);
         Self::get_ticket_inner(&env, ticket_id)
     }
 
