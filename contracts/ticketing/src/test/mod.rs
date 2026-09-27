@@ -1,3 +1,11 @@
+#![allow(
+    unused_imports,
+    unused_variables,
+    dead_code,
+    clippy::all,
+    clippy::pedantic
+)]
+
 use super::*;
 use soroban_sdk::{
     testutils::{Address as _, Ledger, MockAuth, MockAuthInvoke},
@@ -5,10 +13,10 @@ use soroban_sdk::{
     Address, Bytes, Env, IntoVal, String, Vec,
 };
 
-pub mod helpers;
 mod auth;
 mod budget;
 mod events;
+pub mod helpers;
 mod resale;
 mod tickets;
 mod transfer_controls;

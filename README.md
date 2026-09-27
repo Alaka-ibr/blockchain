@@ -1,5 +1,8 @@
 # StellarTickets — Blockchain (Contracts)
 
+[![CI](https://github.com/StellarTickets/blockchain/actions/workflows/ci.yml/badge.svg)](https://github.com/StellarTickets/blockchain/actions/workflows/ci.yml)
+[![Coverage](https://github.com/StellarTickets/blockchain/actions/workflows/coverage.yml/badge.svg)](https://github.com/StellarTickets/blockchain/actions/workflows/coverage.yml)
+
 Soroban smart contracts powering [StellarTickets](https://github.com/StellarTickets) —
 *Secure. Verifiable. Powered by Stellar.*
 
@@ -20,6 +23,7 @@ directly (it goes through the backend and a browser wallet).
 - [Data model](#data-model)
 - [Errors](#errors)
 - [Getting started](#getting-started)
+- [Deployments](#deployments)
 - [Testnet deployment walkthrough](#testnet-deployment-walkthrough)
 - [Project structure](#project-structure)
 - [More documentation](#more-documentation)
@@ -179,19 +183,60 @@ whether a backend should retry it — see
 git clone https://github.com/StellarTickets/blockchain.git
 cd blockchain
 
-# run the full test suite (30 tests, no network required)
-cargo test -p stellar-tickets-ticketing
+# run the full test suite (no network required)
+cargo test --workspace
 
 # format + lint, matching CI
-cargo fmt --check
+cargo fmt --all -- --check
 cargo clippy --all-targets -- -D warnings
 
-# build the optimized wasm binary
+# build the contract wasm
 stellar contract build
+
+# or run the complete build, test, optimize, and hash workflow:
+./scripts/build.sh
 ```
 
-The build output lands at
-`target/wasm32v1-none/release/stellar_tickets_ticketing.wasm`.
+### Build & Optimization (`scripts/build.sh`)
+
+The [`scripts/build.sh`](scripts/build.sh) script orchestrates the full contract build and verification pipeline:
+1. Validates code formatting (`cargo fmt --all -- --check`)
+2. Runs clippy lints (`cargo clippy --all-targets -- -D warnings`)
+3. Executes the full workspace test suite (`cargo test --workspace`)
+4. Compiles the contract WASM (`stellar contract build`)
+5. Optimizes the WASM bytecode for minimal size and gas execution costs via `stellar contract optimize`
+6. Computes and displays the SHA-256 hash of the optimized WASM binary for deployment tracking and verification
+
+The output lands at:
+- `target/wasm32v1-none/release/stellar_tickets_ticketing.optimized.wasm` (or `target/wasm32v1-none/release/stellar_tickets_ticketing.wasm`)
+
+## Deployments
+
+Deployed contract instances across networks (`testnet`, `futurenet`, `mainnet`), their IDs, WASM hashes, and deployment history are tracked in [`DEPLOYMENTS.md`](DEPLOYMENTS.md).
+
+Use [`scripts/deploy.sh`](scripts/deploy.sh) to deploy with built-in input validation:
+```bash
+# Deploy to testnet
+./scripts/deploy.sh <identity> testnet
+
+# Dry-run: preview unsigned deployment transaction without submitting
+./scripts/deploy.sh <identity> testnet --dry-run
+
+# Deploy to mainnet (prompts for typed confirmation)
+./scripts/deploy.sh <identity> mainnet
+
+# Scripted mainnet deploy (skips confirmation prompt)
+./scripts/deploy.sh <identity> mainnet --yes
+```
+
+The script automatically validates:
+- Required arguments (`identity` and `network`)
+- Valid network targets (`testnet`, `futurenet`, `mainnet`)
+- Stellar CLI installation and availability in `PATH`
+- Identity presence in the Stellar CLI key store
+- Existence of the compiled contract WASM binary
+
+When deploying a new instance, record its details using the template provided in [`DEPLOYMENTS.md`](DEPLOYMENTS.md).
 
 ## Testnet setup and funding
 
@@ -272,6 +317,7 @@ Once deployed, hand `<contract-id>` to the backend as its
 │   └── deploy.sh
 ├── .github                       # CI, issue/PR templates, dependabot
 ├── Cargo.toml                     # workspace manifest
+├── DEPLOYMENTS.md                # network deployment records and template
 ├── rust-toolchain.toml            # pinned Rust version
 ├── rustfmt.toml / deny.toml       # formatting + dependency-audit config
 └── README.md
@@ -283,6 +329,7 @@ The [`docs/`](docs/README.md) directory goes deeper on specific topics:
 
 | Doc | Covers |
 |---|---|
+| [`DEPLOYMENTS.md`](DEPLOYMENTS.md) | Contract deployment records, WASM hashes, and template |
 | [`ARCHITECTURE.md`](docs/ARCHITECTURE.md) | How this contract fits into the wider system |
 | [`CONTRACT_API.md`](docs/CONTRACT_API.md) | Full function-by-function reference |
 | [`ERRORS.md`](docs/ERRORS.md) | Every error code, what returns it, and whether to retry |

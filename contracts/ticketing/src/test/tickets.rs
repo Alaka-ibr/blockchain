@@ -505,7 +505,10 @@ fn revoke_with_refund_returns_payment_to_owner() {
     client.revoke_with_refund(&organizer, &ticket_id, &true);
 
     assert_eq!(token.balance(&buyer), 10_000);
-    assert_eq!(client.verify_ticket(&ticket_id).status, TicketStatus::Revoked);
+    assert_eq!(
+        client.verify_ticket(&ticket_id).status,
+        TicketStatus::Revoked
+    );
 }
 
 #[test]

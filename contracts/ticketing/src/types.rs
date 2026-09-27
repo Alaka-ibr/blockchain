@@ -1,4 +1,5 @@
 //! Contract storage types shared across the ticketing contract.
+#![allow(missing_docs)]
 
 use soroban_sdk::{contracttype, Address, BytesN, String};
 

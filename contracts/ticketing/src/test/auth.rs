@@ -103,7 +103,7 @@ fn purchase_throttle_rejects_rapid_repeat_purchases() {
         &String::from_str(&env, "2"),
         &1_000i128,
     );
-    assert_eq!(throttled, Err(Ok(Error::PurchaseThrottled)));
+    assert_eq!(throttled, Err(Ok(Error::PurchaseTooSoon)));
 }
 
 #[test]

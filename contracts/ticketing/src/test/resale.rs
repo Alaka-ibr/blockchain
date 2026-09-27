@@ -38,7 +38,10 @@ fn resale_price_exactly_at_the_face_value_cap_is_allowed() {
     );
 
     client.list_for_resale(&buyer, &ticket_id, &1_200i128);
-    assert_eq!(client.verify_ticket(&ticket_id).status, TicketStatus::Resale);
+    assert_eq!(
+        client.verify_ticket(&ticket_id).status,
+        TicketStatus::Resale
+    );
 }
 
 #[test]
@@ -354,9 +357,9 @@ fn very_large_prices_near_i128_limits() {
     let (env, client, _token, _token_asset, _admin, organizer) = setup();
     make_event(&env, &client, &organizer, 1);
     let owner = Address::generate(&env);
-    
+
     // Test that an original_price close to i128::MAX/2 will panic or overflow on multiplier
-    // Just document the outcome. 
+    // Just document the outcome.
     let ticket_id = client.issue_ticket(
         &organizer,
         &1,
@@ -366,16 +369,16 @@ fn very_large_prices_near_i128_limits() {
         &(i128::MAX / 2),
     );
 
-    // Soroban handles overflow by trapping or returning error. 
+    // Soroban handles overflow by trapping or returning error.
     // We expect a host trap (panic) or an error, just need to assert it if possible.
     // Or just a normal large price that doesn't overflow.
     let price = i128::MAX / 10;
-    // this shouldn't overflow the multiplier if we are careful, 
+    // this shouldn't overflow the multiplier if we are careful,
     // max_resale_multiplier_bps = 12000 (120%).
     // i128::MAX / 10 * 12000 is still < i128::MAX, so it's fine.
-    
+
     // We'll just verify the test runs for large prices.
-    client.try_list_for_resale(&owner, &ticket_id, &price);
+    let _ = client.try_list_for_resale(&owner, &ticket_id, &price);
 }
 
 #[test]
@@ -383,7 +386,7 @@ fn buy_resale_where_seller_is_organizer() {
     let (env, client, token, token_asset, _admin, organizer) = setup();
     make_event(&env, &client, &organizer, 1);
     let buyer = Address::generate(&env);
-    
+
     let ticket_id = client.issue_ticket(
         &organizer,
         &1,
@@ -395,9 +398,9 @@ fn buy_resale_where_seller_is_organizer() {
 
     client.list_for_resale(&organizer, &ticket_id, &1100i128);
     token_asset.mint(&buyer, &10000i128);
-    
+
     client.buy_resale(&buyer, &ticket_id);
-    
+
     // 5% of 1100 = 55 (royalty), 1045 to seller (organizer).
     // Total to organizer should be 1100.
     assert_eq!(token.balance(&organizer), 1100);
@@ -410,7 +413,7 @@ fn consecutive_resales_of_same_ticket() {
     let seller1 = Address::generate(&env);
     let buyer1 = Address::generate(&env);
     let buyer2 = Address::generate(&env);
-    
+
     let ticket_id = client.issue_ticket(
         &organizer,
         &1,
@@ -423,7 +426,7 @@ fn consecutive_resales_of_same_ticket() {
     client.list_for_resale(&seller1, &ticket_id, &1100i128);
     token_asset.mint(&buyer1, &10000i128);
     client.buy_resale(&buyer1, &ticket_id);
-    
+
     let ticket1 = client.verify_ticket(&ticket_id);
     assert_eq!(ticket1.owner, buyer1);
     assert_eq!(ticket1.resale_price, 0);
@@ -432,7 +435,7 @@ fn consecutive_resales_of_same_ticket() {
     client.list_for_resale(&buyer1, &ticket_id, &1200i128);
     token_asset.mint(&buyer2, &10000i128);
     client.buy_resale(&buyer2, &ticket_id);
-    
+
     let ticket2 = client.verify_ticket(&ticket_id);
     assert_eq!(ticket2.owner, buyer2);
     assert_eq!(ticket2.resale_price, 0);
@@ -444,7 +447,7 @@ fn cancel_resale_by_non_owner() {
     make_event(&env, &client, &organizer, 1);
     let owner = Address::generate(&env);
     let non_owner = Address::generate(&env);
-    
+
     let ticket_id = client.issue_ticket(
         &organizer,
         &1,

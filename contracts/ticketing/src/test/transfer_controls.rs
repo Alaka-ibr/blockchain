@@ -26,7 +26,7 @@ fn make_event_with_options(
 #[test]
 fn resale_price_floor_is_enforced_when_configured() {
     let (env, client, _token, _token_asset, _admin, organizer) = setup();
-    make_event_with_options(&env, &client, &organizer, 1, Some(1_100), None);
+    make_event_with_options(&env, &client, &organizer, 1, Some(11_000), None);
     let owner = Address::generate(&env);
     let ticket_id = client.issue_ticket(
         &organizer,
