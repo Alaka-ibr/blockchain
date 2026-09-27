@@ -160,7 +160,10 @@ fn buy_resale_does_not_increment_tickets_issued() {
     client.buy_resale(&buyer, &ticket_id);
 
     assert_eq!(tickets_issued_before_resale, 1);
-    assert_eq!(client.get_event(&1).tickets_issued, tickets_issued_before_resale);
+    assert_eq!(
+        client.get_event(&1).tickets_issued,
+        tickets_issued_before_resale
+    );
 }
 
 #[test]

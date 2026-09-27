@@ -258,7 +258,12 @@ fn issue_ticket_and_purchase_primary_share_the_id_counter() {
     );
 
     assert_eq!(
-        [first_issued, first_purchased, second_issued, second_purchased],
+        [
+            first_issued,
+            first_purchased,
+            second_issued,
+            second_purchased
+        ],
         [0, 1, 2, 3]
     );
 }
@@ -349,21 +354,11 @@ fn set_tier_price_is_organizer_only_and_rejects_negative_prices() {
     let stranger = Address::generate(&env);
 
     assert_eq!(
-        client.try_set_tier_price(
-            &stranger,
-            &1,
-            &String::from_str(&env, "GA"),
-            &0i128
-        ),
+        client.try_set_tier_price(&stranger, &1, &String::from_str(&env, "GA"), &0i128),
         Err(Ok(Error::NotOrganizer))
     );
     assert_eq!(
-        client.try_set_tier_price(
-            &organizer,
-            &1,
-            &String::from_str(&env, "GA"),
-            &-1i128
-        ),
+        client.try_set_tier_price(&organizer, &1, &String::from_str(&env, "GA"), &-1i128),
         Err(Ok(Error::InvalidPrice))
     );
 }
