@@ -465,26 +465,24 @@ fn create_event_accepts_a_royalty_of_exactly_10_000_bps() {
     assert_eq!(client.get_event(&1).royalty_bps, 10_000);
 }
 
-/// Current behaviour: a zero multiplier is accepted at creation, but it makes
-/// the resale cap 0, so every resale listing (price must be > 0) is rejected.
+/// Issue #124: a zero multiplier is no longer accepted. Previously it was
+/// stored and then silently made every resale impossible (cap 0), which is a
+/// dead-end event rather than a valid configuration. The contract now rejects
+/// it at creation with `Error::InvalidMultiplier`; see
+/// `resale_multiplier.rs` for the full boundary coverage.
 #[test]
-fn zero_max_resale_multiplier_event_is_created_but_blocks_all_resale() {
+fn create_event_rejects_zero_max_resale_multiplier() {
     let (env, client, _token, _token_asset, _admin, organizer) = setup();
-    make_custom_event(
-        &env, &client, &organizer, 1, "Event", "concert", 0, 500, 10_000,
-    );
-    assert_eq!(client.get_event(&1).max_resale_multiplier_bps, 0);
-
-    let buyer = Address::generate(&env);
-    let ticket_id = client.issue_ticket(
+    let result = client.try_create_event(
         &organizer,
         &1,
-        &buyer,
-        &String::from_str(&env, "GA"),
-        &String::from_str(&env, "1"),
-        &1_000i128,
+        &String::from_str(&env, "Event"),
+        &String::from_str(&env, "concert"),
+        &0u32,
+        &500u32,
+        &10_000u64,
+        &0u64,
+        &0u64,
     );
-    let result = client.try_list_for_resale(&buyer, &ticket_id, &1i128);
-    assert_eq!(result, Err(Ok(Error::ResalePriceExceedsCap)));
-    assert_eq!(client.verify_ticket(&ticket_id).status, TicketStatus::Valid);
+    assert_eq!(result, Err(Ok(Error::InvalidMultiplier)));
 }

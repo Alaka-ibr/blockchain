@@ -64,6 +64,11 @@ diagnostic transaction.
 | 33 | `TransferLimitExceeded` | The ticket has already reached the event's `max_transfers_per_ticket` |
 | 34 | `ResalePriceBelowFloor` | Listing price is below `original_price * min_resale_multiplier_bps / 10000` (only possible when the event set a floor) |
 | 35 | `TierPriceNotSet` | `purchase_primary` was called for a tier the organizer has not priced with `set_tier_price` |
+| 36 | `InvalidMultiplier` | `max_resale_multiplier_bps < 10000` on `create_event` / `create_event_with_options` — a multiplier below face value would cap every resale below face value, making resale impossible |
+| 37 | `EmptyNameOrCategory` | The supplied `name`, `category`, `tier` or `seat` label is an empty string |
+| 38 | `StringTooLong` | The supplied `name` (> `MAX_NAME_LEN`), `category` (> `MAX_CATEGORY_LEN`) or `tier`/`seat` (> `MAX_TICKET_LABEL_LEN`) exceeds its byte budget |
+| 39 | `SelfTransfer` | `transfer_ticket` was called with `from == to` |
+| 40 | `SelfPurchase` | `buy_resale` was called by the ticket's current `owner` (the seller buying their own listing) |
 
 ### Grouping
 
@@ -72,10 +77,11 @@ diagnostic transaction.
 | Initialization & ordering | 1, 2, 4, 18, 30, 31, 32 | Initialization, idempotency and sequencing constraints — rejected without touching ticket state |
 | Lookup | 3, 5 | The referenced record does not exist in persistent storage |
 | Authorization | 6, 7, 17 | The signer is authenticated but lacks the required role for the record |
-| Ticket state machine | 8, 9, 10, 33 | The ticket's `status` or transfer counter forbids the action |
-| Policy, pricing & timing | 11, 12, 13, 19, 20, 21, 22, 34, 35 | Organizer-configured or time-based policy rejects the arguments |
+| Ticket state machine | 8, 9, 10, 33, 39, 40 | The ticket's `status` or transfer counter forbids the action, or the transfer/purchase is a no-op on the current owner |
+| Policy, pricing & timing | 11, 12, 13, 19, 20, 21, 22, 34, 35, 36 | Organizer-configured or time-based policy rejects the arguments |
 | Gift claims | 23, 24, 25, 26 | The claim link is missing, expired, or the preimage does not match |
 | Batching | 27, 28 | `Vec` arity is outside `1..=MAX_BATCH_SIZE` |
+| Input bounds | 37, 38 | A `name`/`category`/`tier`/`seat` label is empty or longer than its byte budget |
 | Escrow, throttle & token config | 14, 15, 16, 29 | Escrow release, purchase throttle, and payment-token validation |
 
 ## Which entry points return which error

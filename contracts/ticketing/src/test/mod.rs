@@ -15,9 +15,13 @@ use soroban_sdk::{
 
 mod auth;
 mod budget;
+mod event_labels;
 mod events;
 pub mod helpers;
 mod resale;
+mod resale_multiplier;
+mod self_transfer;
+mod ticket_labels;
 mod tickets;
 mod transfer_controls;
 mod ttl;

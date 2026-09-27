@@ -11,7 +11,8 @@ mod types;
 
 pub use constants::{
     BPS_DENOMINATOR, CATEGORY_CONCERT, CATEGORY_CONFERENCE, CATEGORY_FESTIVAL, CATEGORY_FLIGHT,
-    CATEGORY_OTHER, CATEGORY_SPORTS, MAX_BATCH_SIZE, PAYMENT_TOKEN_CHANGE_DELAY_LEDGERS,
+    CATEGORY_OTHER, CATEGORY_SPORTS, MAX_BATCH_SIZE, MAX_CATEGORY_LEN, MAX_NAME_LEN,
+    MAX_TICKET_LABEL_LEN, PAYMENT_TOKEN_CHANGE_DELAY_LEDGERS,
 };
 pub use error::Error;
 pub use events::{
@@ -78,6 +79,33 @@ impl TicketingContract {
         env.storage()
             .instance()
             .extend_ttl(LEDGER_THRESHOLD, LEDGER_BUMP);
+    }
+
+    /// Rejects a string that is empty or longer than `max_len` bytes.
+    ///
+    /// Shared by the event `name`/`category` (Issue #125) and the ticket
+    /// `tier`/`seat` (Issue #126) validators so every label has one rule.
+    fn validate_label(value: &String, max_len: u32) -> Result<(), Error> {
+        let len = value.len();
+        if len == 0 {
+            return Err(Error::EmptyNameOrCategory);
+        }
+        if len > max_len {
+            return Err(Error::StringTooLong);
+        }
+        Ok(())
+    }
+
+    /// Event metadata validation: non-empty, length-bounded name and category.
+    fn validate_event_labels(name: &String, category: &String) -> Result<(), Error> {
+        Self::validate_label(name, MAX_NAME_LEN)?;
+        Self::validate_label(category, MAX_CATEGORY_LEN)
+    }
+
+    /// Ticket label validation: non-empty, length-bounded tier and seat.
+    fn validate_ticket_labels(tier: &String, seat: &String) -> Result<(), Error> {
+        Self::validate_label(tier, MAX_TICKET_LABEL_LEN)?;
+        Self::validate_label(seat, MAX_TICKET_LABEL_LEN)
     }
 
     /// Step one of a payment token change: the admin proposes a new token,
@@ -171,6 +199,16 @@ impl TicketingContract {
         if royalty_bps > 10_000 {
             return Err(Error::InvalidRoyalty);
         }
+        // Issue #124: a multiplier below face value (10_000 bps) makes every
+        // resale impossible — `list_for_resale` computes the cap as
+        // `original_price * max_resale_multiplier_bps / 10_000`, which lands
+        // below the face value and rejects any listing at or above it. Require
+        // the multiplier to be at least face value.
+        if max_resale_multiplier_bps < BPS_DENOMINATOR {
+            return Err(Error::InvalidMultiplier);
+        }
+        // Issue #125: reject empty or oversized name/category.
+        Self::validate_event_labels(&name, &category)?;
         if starts_at <= env.ledger().timestamp() {
             return Err(Error::InvalidEventTime);
         }
@@ -229,6 +267,16 @@ impl TicketingContract {
         if royalty_bps > 10_000 {
             return Err(Error::InvalidRoyalty);
         }
+        // Issue #124: a multiplier below face value (10_000 bps) makes every
+        // resale impossible — `list_for_resale` computes the cap as
+        // `original_price * max_resale_multiplier_bps / 10_000`, which lands
+        // below the face value and rejects any listing at or above it. Require
+        // the multiplier to be at least face value.
+        if max_resale_multiplier_bps < BPS_DENOMINATOR {
+            return Err(Error::InvalidMultiplier);
+        }
+        // Issue #125: reject empty or oversized name/category.
+        Self::validate_event_labels(&name, &category)?;
         if starts_at <= env.ledger().timestamp() {
             return Err(Error::InvalidEventTime);
         }
@@ -394,6 +442,9 @@ impl TicketingContract {
         if price < 0 {
             return Err(Error::InvalidPrice);
         }
+        // Issue #126: bound tier/seat so they cannot inflate per-ticket
+        // storage cost and rent.
+        Self::validate_ticket_labels(&tier, &seat)?;
         let event = Self::get_event_inner(&env, event_id)?;
         if event.organizer != organizer {
             return Err(Error::NotOrganizer);
@@ -471,6 +522,10 @@ impl TicketingContract {
     ) -> Result<u64, Error> {
         Self::extend_instance_ttl(&env);
         buyer.require_auth();
+        // Issue #126: bound tier/seat so they cannot inflate per-ticket
+        // storage cost and rent. Validated before the throttle and the tier
+        // price lookup so an oversized label is rejected on its own terms.
+        Self::validate_ticket_labels(&tier, &seat)?;
         Self::enforce_purchase_throttle(&env, &buyer)?;
         let mut event = Self::get_event_inner(&env, event_id)?;
         let price = Self::tier_price(&env, event_id, &tier)?;
@@ -556,6 +611,12 @@ impl TicketingContract {
     ) -> Result<(), Error> {
         Self::extend_instance_ttl(&env);
         from.require_auth();
+        // Issue #128: reject a self-transfer. It would otherwise consume a
+        // slot against the per-ticket transfer limit and clear the resale
+        // price and any gift claim without moving ownership.
+        if from == to {
+            return Err(Error::SelfTransfer);
+        }
         let mut ticket = Self::get_ticket_inner(&env, ticket_id)?;
         if ticket.owner != from {
             return Err(Error::NotOwner);
@@ -1031,6 +1092,12 @@ impl TicketingContract {
         let mut ticket = Self::get_ticket_inner(&env, ticket_id)?;
         if ticket.status != TicketStatus::Resale {
             return Err(Error::NotForResale);
+        }
+        // Issue #128: a seller must not be able to buy their own listing,
+        // which would move the ticket to itself, consume a transfer slot and
+        // pay a royalty to the organizer for nothing.
+        if ticket.owner == buyer {
+            return Err(Error::SelfPurchase);
         }
         let event = Self::get_event_inner(&env, ticket.event_id)?;
         if Self::resale_closed(&env, &event) {
