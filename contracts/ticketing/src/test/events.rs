@@ -26,6 +26,36 @@ fn create_event_rejects_a_duplicate_event_id() {
 }
 
 #[test]
+fn get_organizer_events_returns_the_registered_event_count() {
+    let (env, client, _token, _token_asset, _admin, organizer) = setup();
+    assert_eq!(client.get_organizer_events(&organizer), 0);
+    make_event(&env, &client, &organizer, 1);
+    make_event(&env, &client, &organizer, 2);
+    assert_eq!(client.get_organizer_events(&organizer), 2);
+    let other = Address::generate(&env);
+    assert_eq!(client.get_organizer_events(&other), 0);
+}
+
+#[test]
+fn public_getters_return_typed_values_and_typed_errors() {
+    let (env, client, _token, _token_asset, _admin, organizer) = setup();
+    make_event(&env, &client, &organizer, 1);
+    let owner = Address::generate(&env);
+    let ticket_id = client.issue_ticket(
+        &organizer,
+        &1,
+        &owner,
+        &String::from_str(&env, "GA"),
+        &String::from_str(&env, "A1"),
+        &0i128,
+    );
+    assert_eq!(client.get_event(&1).tickets_issued, 1);
+    assert_eq!(client.get_ticket(&ticket_id).owner, owner);
+    assert_eq!(client.try_get_event(&999), Err(Ok(Error::EventNotFound)));
+    assert_eq!(client.try_get_ticket(&999), Err(Ok(Error::TicketNotFound)));
+}
+
+#[test]
 fn create_event_rejects_a_royalty_above_10_000_bps() {
     let (env, client, _token, _token_asset, _admin, organizer) = setup();
     let bad_royalty = client.try_create_event(

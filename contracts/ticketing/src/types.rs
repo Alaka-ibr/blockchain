@@ -127,6 +127,11 @@ pub enum DataKey {
     GiftClaim(u64),
     /// Monotonic counter used to allocate new ticket ids.
     NextTicketId,
+    /// Number of tickets issued for an event. Kept separate from `Event` so
+    /// minting does not rewrite the complete event record.
+    TicketsIssued(u64),
+    /// Number of events registered by an organizer.
+    OrganizerEvents(Address),
     /// Ledger sequence of a buyer's most recent primary purchase.
     LastPurchaseLedger(Address),
     /// Minimum ledger spacing enforced between a buyer's primary purchases.

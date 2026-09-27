@@ -23,6 +23,7 @@ this is a quick-reference summary.
 | `buy_resale(buyer, ticket_id)` | buyer | Buys a listing, splits royalty |
 | `get_event(event_id)` | anyone | Read-only event lookup |
 | `get_ticket(ticket_id)` | anyone | Read-only ticket lookup |
+| `get_organizer_events(organizer)` | anyone | Number of events registered by an organizer |
 
 ## Error codes
 
