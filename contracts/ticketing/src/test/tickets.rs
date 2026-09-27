@@ -123,8 +123,7 @@ fn verify_ticket_reports_each_ticket_state() {
     let valid_id = issue_sample_ticket(&env, &client, &organizer, 1, &valid_owner, 1_000);
     let resale_id = issue_sample_ticket(&env, &client, &organizer, 1, &resale_owner, 1_000);
     let used_id = issue_sample_ticket(&env, &client, &organizer, 1, &used_owner, 1_000);
-    let revoked_id =
-        issue_sample_ticket(&env, &client, &organizer, 1, &revoked_owner, 1_000);
+    let revoked_id = issue_sample_ticket(&env, &client, &organizer, 1, &revoked_owner, 1_000);
 
     client.list_for_resale(&resale_owner, &resale_id, &1_100);
     client.check_in(&organizer, &used_id);
