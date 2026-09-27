@@ -33,7 +33,7 @@ fn issues_and_verifies_ticket() {
 }
 
 #[test]
-fn reading_ticket_extends_ticket_and_instance_ttl() {
+fn reading_a_ticket_does_not_extend_its_ttl() {
     let (env, client, _token, _token_asset, _admin, organizer) = setup();
     make_event(&env, &client, &organizer, 1);
     let owner = Address::generate(&env);
@@ -49,27 +49,37 @@ fn reading_ticket_extends_ticket_and_instance_ttl() {
     env.ledger()
         .with_mut(|ledger| ledger.sequence_number = 40_000);
     let key = DataKey::Ticket(ticket_id);
-    let ticket_ttl_before = env.storage().persistent().get_ttl(&key);
-    let instance_ttl_before = env.storage().instance().get_ttl();
+    let before = env.as_contract(&client.address, || env.storage().persistent().get_ttl(&key));
 
-    client.verify_ticket(&ticket_id);
+    client.get_ticket(&ticket_id);
 
-    assert!(env.storage().persistent().get_ttl(&key) > ticket_ttl_before);
-    assert!(env.storage().instance().get_ttl() > instance_ttl_before);
+    let after = env.as_contract(&client.address, || env.storage().persistent().get_ttl(&key));
+    assert_eq!(before, after, "a read must not write");
 }
 
+/// Read paths deliberately do not bump TTL.
+///
+/// An earlier draft of this test asserted the opposite, and that assertion is
+/// what the broken merge left behind. Bumping a TTL is a state write: doing it
+/// inside `get_event`/`get_ticket` would make every read cost fees and consume
+/// ledger write budget, and it would mean a query mutates state. The contract
+/// instead refreshes TTL on the write paths that matter, via `save_ticket` and
+/// the `extend_ttl` calls next to each mutation. These tests pin that
+/// decision so a future change has to argue with it rather than reintroduce it.
 #[test]
-fn reading_event_extends_instance_ttl() {
+fn reading_an_event_does_not_extend_its_ttl() {
     let (env, client, _token, _token_asset, _admin, organizer) = setup();
     make_event(&env, &client, &organizer, 1);
 
     env.ledger()
         .with_mut(|ledger| ledger.sequence_number = 40_000);
-    let instance_ttl_before = env.storage().instance().get_ttl();
+    let key = DataKey::Event(1);
+    let before = env.as_contract(&client.address, || env.storage().persistent().get_ttl(&key));
 
     client.get_event(&1);
 
-    assert!(env.storage().instance().get_ttl() > instance_ttl_before);
+    let after = env.as_contract(&client.address, || env.storage().persistent().get_ttl(&key));
+    assert_eq!(before, after, "a read must not write");
 }
 
 #[test]
@@ -576,14 +586,7 @@ fn revoke_with_refund_returns_payment_to_owner() {
     client.revoke_with_refund(&organizer, &ticket_id, &true);
 
     assert_eq!(token.balance(&buyer), 10_000);
- fix/storage-ttl-snapshots
-    assert_eq!(
-        client.verify_ticket(&ticket_id).status,
-        TicketStatus::Revoked
-    );
-
     assert_eq!(client.get_ticket(&ticket_id).status, TicketStatus::Revoked);
- main
 }
 
 #[test]
@@ -719,7 +722,10 @@ fn revoke_ticket_on_a_used_ticket_succeeds_and_marks_it_revoked() {
     assert_eq!(client.verify_ticket(&ticket_id).status, TicketStatus::Used);
 
     client.revoke_ticket(&organizer, &ticket_id);
-    assert_eq!(client.verify_ticket(&ticket_id).status, TicketStatus::Revoked);
+    assert_eq!(
+        client.verify_ticket(&ticket_id).status,
+        TicketStatus::Revoked
+    );
 
     // The ticket now reports Revoked rather than AlreadyUsed on re-entry.
     let result = client.try_check_in(&organizer, &ticket_id);
