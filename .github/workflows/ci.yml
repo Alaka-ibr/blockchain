@@ -58,8 +58,11 @@ jobs:
             target
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
+      - name: Install Stellar CLI
+        run: cargo install --locked stellar-cli --version ^27
+
       - name: Build optimized WASM
-        run: cargo build -p stellar-tickets-ticketing --target wasm32v1-none --release
+        run: stellar contract build
 
       - name: Check WASM size
         env:
