@@ -133,7 +133,10 @@ fn events_with_identical_names_have_independent_state() {
     assert_eq!(event1.name, event2.name);
     assert_eq!(event1.category, event2.category);
     assert_ne!(event1.starts_at, event2.starts_at);
-    assert_ne!(event1.max_resale_multiplier_bps, event2.max_resale_multiplier_bps);
+    assert_ne!(
+        event1.max_resale_multiplier_bps,
+        event2.max_resale_multiplier_bps
+    );
     assert_ne!(event1.royalty_bps, event2.royalty_bps);
 
     let buyer1 = Address::generate(&env);

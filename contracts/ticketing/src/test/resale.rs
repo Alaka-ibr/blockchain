@@ -38,7 +38,10 @@ fn resale_price_exactly_at_the_face_value_cap_is_allowed() {
     );
 
     client.list_for_resale(&buyer, &ticket_id, &1_200i128);
-    assert_eq!(client.verify_ticket(&ticket_id).status, TicketStatus::Resale);
+    assert_eq!(
+        client.verify_ticket(&ticket_id).status,
+        TicketStatus::Resale
+    );
 }
 
 #[test]

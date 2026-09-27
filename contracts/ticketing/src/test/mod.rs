@@ -5,10 +5,10 @@ use soroban_sdk::{
     Address, Bytes, Env, IntoVal, String, Vec,
 };
 
-pub mod helpers;
 mod auth;
 mod budget;
 mod events;
+pub mod helpers;
 mod resale;
 mod tickets;
 

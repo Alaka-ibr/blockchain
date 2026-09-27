@@ -57,7 +57,9 @@ impl TicketingContract {
         env.storage()
             .instance()
             .set(&DataKey::PaymentToken, &payment_token);
-        env.storage().instance().set(&DataKey::TokenDecimals, &decimals);
+        env.storage()
+            .instance()
+            .set(&DataKey::TokenDecimals, &decimals);
         env.storage().instance().set(&DataKey::NextTicketId, &0u64);
         env.storage()
             .instance()
@@ -70,6 +72,12 @@ impl TicketingContract {
         Ok(())
     }
 
+    fn extend_instance_ttl(env: &Env) {
+        env.storage()
+            .instance()
+            .extend_ttl(LEDGER_THRESHOLD, LEDGER_BUMP);
+    }
+
     /// Step one of a payment token change: the admin proposes a new token,
     /// which can only be applied after `PAYMENT_TOKEN_CHANGE_DELAY_LEDGERS`.
     /// A new proposal replaces any pending one. Proceeds already held in
@@ -79,6 +87,7 @@ impl TicketingContract {
         admin: Address,
         new_token: Address,
     ) -> Result<(), Error> {
+        Self::extend_instance_ttl(&env);
         Self::require_admin(&env, &admin)?;
         // The probe validates that the proposed token is a real token
         // contract. Its decimals are captured when the change is APPLIED so
@@ -108,6 +117,7 @@ impl TicketingContract {
     /// Step two: once the delay has elapsed, the admin applies the pending
     /// payment token.
     pub fn apply_payment_token(env: Env, admin: Address) -> Result<(), Error> {
+        Self::extend_instance_ttl(&env);
         Self::require_admin(&env, &admin)?;
         let pending: PendingPaymentToken = env
             .storage()
@@ -124,8 +134,12 @@ impl TicketingContract {
         env.storage()
             .instance()
             .set(&DataKey::PaymentToken, &pending.token);
-        env.storage().instance().set(&DataKey::TokenDecimals, &decimals);
-        env.storage().instance().remove(&DataKey::PendingPaymentToken);
+        env.storage()
+            .instance()
+            .set(&DataKey::TokenDecimals, &decimals);
+        env.storage()
+            .instance()
+            .remove(&DataKey::PendingPaymentToken);
         PaymentTokenChanged {
             admin,
             old_token,
@@ -165,6 +179,7 @@ impl TicketingContract {
         transfer_freeze_seconds: u64,
         resale_cutoff_seconds: u64,
     ) -> Result<(), Error> {
+        Self::extend_instance_ttl(&env);
         organizer.require_auth();
         if royalty_bps > BPS_DENOMINATOR {
             return Err(Error::InvalidRoyalty);
@@ -210,6 +225,7 @@ impl TicketingContract {
         tier: String,
         price: i128,
     ) -> Result<Vec<u64>, Error> {
+        Self::extend_instance_ttl(&env);
         organizer.require_auth();
         if price < 0 || winner_count == 0 || winner_count > entrants.len() {
             return Err(Error::InvalidLottery);
@@ -258,6 +274,7 @@ impl TicketingContract {
         event_id: u64,
         escrow_release_ledger: u32,
     ) -> Result<(), Error> {
+        Self::extend_instance_ttl(&env);
         organizer.require_auth();
         let mut event = Self::get_event(&env, event_id)?;
         Self::require_organizer(&event, &organizer)?;
@@ -284,6 +301,7 @@ impl TicketingContract {
         event_id: u64,
         token: Option<Address>,
     ) -> Result<(), Error> {
+        Self::extend_instance_ttl(&env);
         organizer.require_auth();
         let mut event = Self::get_event(&env, event_id)?;
         Self::require_organizer(&event, &organizer)?;
@@ -304,8 +322,9 @@ impl TicketingContract {
     /// when one is set, otherwise the contract-wide payment token
     /// (issue #235).
     pub fn event_payment_token(env: Env, event_id: u64) -> Result<Address, Error> {
+        Self::extend_instance_ttl(&env);
         let event = Self::get_event(&env, event_id)?;
-        Self::payment_token_for_event(env, &event)
+        Self::payment_token_for_event(&env, &event)
     }
 
     /// Organizer-authorized issuance for tickets already paid for off-chain
@@ -331,6 +350,7 @@ impl TicketingContract {
         seat: String,
         price: i128,
     ) -> Result<u64, Error> {
+        Self::extend_instance_ttl(&env);
         organizer.require_auth();
         if price < 0 {
             return Err(Error::InvalidPrice);
@@ -366,6 +386,7 @@ impl TicketingContract {
         seat: String,
         price: i128,
     ) -> Result<u64, Error> {
+        Self::extend_instance_ttl(&env);
         buyer.require_auth();
         if price < 0 {
             return Err(Error::InvalidPrice);
@@ -395,6 +416,7 @@ impl TicketingContract {
     /// sequence has reached `escrow_release_ledger` (i.e. the event has
     /// ended).
     pub fn release_escrow(env: Env, organizer: Address, event_id: u64) -> Result<(), Error> {
+        Self::extend_instance_ttl(&env);
         organizer.require_auth();
         let mut event = Self::get_event(&env, event_id)?;
         Self::require_organizer(&event, &organizer)?;
@@ -424,6 +446,7 @@ impl TicketingContract {
         admin: Address,
         min_ledger_spacing: u32,
     ) -> Result<(), Error> {
+        Self::extend_instance_ttl(&env);
         Self::require_admin(&env, &admin)?;
         env.storage()
             .instance()
@@ -448,6 +471,7 @@ impl TicketingContract {
         ticket_id: u64,
         to: Address,
     ) -> Result<(), Error> {
+        Self::extend_instance_ttl(&env);
         from.require_auth();
         let mut ticket = Self::get_ticket(&env, ticket_id)?;
         if ticket.owner != from {
@@ -474,6 +498,7 @@ impl TicketingContract {
         ticket_ids: Vec<u64>,
         to: Address,
     ) -> Result<(), Error> {
+        Self::extend_instance_ttl(&env);
         from.require_auth();
         if ticket_ids.is_empty() {
             return Err(Error::EmptyBatch);
@@ -509,6 +534,7 @@ impl TicketingContract {
         secret_hash: BytesN<32>,
         expires_at: u64,
     ) -> Result<(), Error> {
+        Self::extend_instance_ttl(&env);
         owner.require_auth();
         if expires_at <= env.ledger().timestamp() {
             return Err(Error::InvalidExpiry);
@@ -545,6 +571,7 @@ impl TicketingContract {
         ticket_id: u64,
         secret: Bytes,
     ) -> Result<(), Error> {
+        Self::extend_instance_ttl(&env);
         recipient.require_auth();
         let key = DataKey::GiftClaim(ticket_id);
         let claim: GiftClaim = env
@@ -589,6 +616,7 @@ impl TicketingContract {
     /// assert_eq!(ticket.status, TicketStatus::Valid);
     /// ```
     pub fn verify_ticket(env: Env, ticket_id: u64) -> Result<Ticket, Error> {
+        Self::extend_instance_ttl(&env);
         Self::get_ticket(&env, ticket_id)
     }
 
@@ -596,6 +624,7 @@ impl TicketingContract {
     /// Allows scanners to inspect multiple tickets in one call.
     /// Bounded by `MAX_BATCH_SIZE`.
     pub fn verify_tickets(env: Env, ticket_ids: Vec<u64>) -> Result<Vec<Ticket>, Error> {
+        Self::extend_instance_ttl(&env);
         if ticket_ids.is_empty() {
             return Err(Error::EmptyBatch);
         }
@@ -618,6 +647,7 @@ impl TicketingContract {
     /// client.check_in(&organizer, &ticket_id);
     /// ```
     pub fn check_in(env: Env, organizer: Address, ticket_id: u64) -> Result<(), Error> {
+        Self::extend_instance_ttl(&env);
         organizer.require_auth();
         let mut ticket = Self::get_ticket(&env, ticket_id)?;
         let event = Self::get_event(&env, ticket.event_id)?;
@@ -637,6 +667,7 @@ impl TicketingContract {
     /// Marks a batch of tickets as used at the point of entry for group admission.
     /// Only the event's organizer may check tickets in, bounded by `MAX_BATCH_SIZE`.
     pub fn check_in_batch(env: Env, organizer: Address, ticket_ids: Vec<u64>) -> Result<(), Error> {
+        Self::extend_instance_ttl(&env);
         organizer.require_auth();
         if ticket_ids.is_empty() {
             return Err(Error::EmptyBatch);
@@ -665,6 +696,7 @@ impl TicketingContract {
     /// report, policy violation). Revoked tickets can never be transferred,
     /// resold, or checked in again.
     pub fn revoke_ticket(env: Env, organizer: Address, ticket_id: u64) -> Result<(), Error> {
+        Self::extend_instance_ttl(&env);
         organizer.require_auth();
         let mut ticket = Self::get_ticket(&env, ticket_id)?;
         let event = Self::get_event(&env, ticket.event_id)?;
@@ -687,6 +719,7 @@ impl TicketingContract {
         ticket_id: u64,
         refund: bool,
     ) -> Result<(), Error> {
+        Self::extend_instance_ttl(&env);
         organizer.require_auth();
         let mut ticket = Self::get_ticket(&env, ticket_id)?;
         let event = Self::get_event(&env, ticket.event_id)?;
@@ -708,6 +741,7 @@ impl TicketingContract {
     /// Mass revocation of tickets by the event organizer (chargeback, policy violation).
     /// Bounded by `MAX_BATCH_SIZE`.
     pub fn revoke_batch(env: Env, organizer: Address, ticket_ids: Vec<u64>) -> Result<(), Error> {
+        Self::extend_instance_ttl(&env);
         organizer.require_auth();
         if ticket_ids.is_empty() {
             return Err(Error::EmptyBatch);
@@ -740,6 +774,7 @@ impl TicketingContract {
         ticket_id: u64,
         price: i128,
     ) -> Result<(), Error> {
+        Self::extend_instance_ttl(&env);
         owner.require_auth();
         if price <= 0 {
             return Err(Error::InvalidPrice);
@@ -753,8 +788,8 @@ impl TicketingContract {
         if Self::resale_closed(&env, &event) {
             return Err(Error::ResaleClosed);
         }
-        let cap =
-            ticket.original_price * event.max_resale_multiplier_bps as i128 / BPS_DENOMINATOR as i128;
+        let cap = ticket.original_price * event.max_resale_multiplier_bps as i128
+            / BPS_DENOMINATOR as i128;
         if price > cap {
             return Err(Error::ResalePriceExceedsCap);
         }
@@ -772,6 +807,7 @@ impl TicketingContract {
     /// client.cancel_resale(&owner, &ticket_id);
     /// ```
     pub fn cancel_resale(env: Env, owner: Address, ticket_id: u64) -> Result<(), Error> {
+        Self::extend_instance_ttl(&env);
         owner.require_auth();
         let mut ticket = Self::get_ticket(&env, ticket_id)?;
         if ticket.owner != owner {
@@ -795,6 +831,7 @@ impl TicketingContract {
     /// client.buy_resale(&buyer, &ticket_id);
     /// ```
     pub fn buy_resale(env: Env, buyer: Address, ticket_id: u64) -> Result<(), Error> {
+        Self::extend_instance_ttl(&env);
         buyer.require_auth();
         let mut ticket = Self::get_ticket(&env, ticket_id)?;
         if ticket.status != TicketStatus::Resale {
@@ -827,6 +864,7 @@ impl TicketingContract {
     ///
     /// Returns `Error::EventNotFound` when no event with `event_id` exists.
     pub fn get_event(env: &Env, event_id: u64) -> Result<Event, Error> {
+        Self::extend_instance_ttl(env);
         env.storage()
             .persistent()
             .get(&DataKey::Event(event_id))
@@ -839,10 +877,17 @@ impl TicketingContract {
     ///
     /// Returns `Error::TicketNotFound` when no ticket with `ticket_id` exists.
     pub fn get_ticket(env: &Env, ticket_id: u64) -> Result<Ticket, Error> {
+        Self::extend_instance_ttl(env);
+        let key = DataKey::Ticket(ticket_id);
+        let ticket = env
+            .storage()
+            .persistent()
+            .get(&key)
+            .ok_or(Error::TicketNotFound)?;
         env.storage()
             .persistent()
-            .get(&DataKey::Ticket(ticket_id))
-            .ok_or(Error::TicketNotFound)
+            .extend_ttl(&key, LEDGER_THRESHOLD, LEDGER_BUMP);
+        Ok(ticket)
     }
 
     fn save_ticket(env: &Env, ticket_id: u64, ticket: &Ticket) {
@@ -940,6 +985,7 @@ impl TicketingContract {
     /// refreshed whenever the payment token changes. Frontends use this to
     /// convert token amounts between raw units and display units.
     pub fn token_decimals(env: Env) -> Result<u32, Error> {
+        Self::extend_instance_ttl(&env);
         env.storage()
             .instance()
             .get(&DataKey::TokenDecimals)
@@ -992,4 +1038,3 @@ impl TicketingContract {
 
 #[cfg(test)]
 mod test;
-

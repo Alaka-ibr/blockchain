@@ -1,4 +1,5 @@
 use super::*;
+use soroban_sdk::testutils::storage::{Instance as _, Persistent as _};
 
 #[test]
 fn issues_and_verifies_ticket() {
@@ -22,6 +23,46 @@ fn issues_and_verifies_ticket() {
 
     let event = client.get_event(&1);
     assert_eq!(event.tickets_issued, 1);
+}
+
+#[test]
+fn reading_ticket_extends_ticket_and_instance_ttl() {
+    let (env, client, _token, _token_asset, _admin, organizer) = setup();
+    make_event(&env, &client, &organizer, 1);
+    let owner = Address::generate(&env);
+    let ticket_id = client.issue_ticket(
+        &organizer,
+        &1,
+        &owner,
+        &String::from_str(&env, "GA"),
+        &String::from_str(&env, "A1"),
+        &1_000i128,
+    );
+
+    env.ledger()
+        .with_mut(|ledger| ledger.sequence_number = 40_000);
+    let key = DataKey::Ticket(ticket_id);
+    let ticket_ttl_before = env.storage().persistent().get_ttl(&key);
+    let instance_ttl_before = env.storage().instance().get_ttl();
+
+    client.verify_ticket(&ticket_id);
+
+    assert!(env.storage().persistent().get_ttl(&key) > ticket_ttl_before);
+    assert!(env.storage().instance().get_ttl() > instance_ttl_before);
+}
+
+#[test]
+fn reading_event_extends_instance_ttl() {
+    let (env, client, _token, _token_asset, _admin, organizer) = setup();
+    make_event(&env, &client, &organizer, 1);
+
+    env.ledger()
+        .with_mut(|ledger| ledger.sequence_number = 40_000);
+    let instance_ttl_before = env.storage().instance().get_ttl();
+
+    client.get_event(&1);
+
+    assert!(env.storage().instance().get_ttl() > instance_ttl_before);
 }
 
 #[test]
@@ -505,7 +546,10 @@ fn revoke_with_refund_returns_payment_to_owner() {
     client.revoke_with_refund(&organizer, &ticket_id, &true);
 
     assert_eq!(token.balance(&buyer), 10_000);
-    assert_eq!(client.verify_ticket(&ticket_id).status, TicketStatus::Revoked);
+    assert_eq!(
+        client.verify_ticket(&ticket_id).status,
+        TicketStatus::Revoked
+    );
 }
 
 #[test]
