@@ -23,3 +23,20 @@ Run the full suite with:
 ```bash
 cargo test -p stellar-tickets-ticketing
 ```
+
+## Snapshot policy
+
+Soroban test snapshots live in
+`contracts/ticketing/test_snapshots/test/`. They record authorization and
+storage state and are reviewed source artifacts, not disposable build output.
+Keep snapshots that correspond to active tests; remove a snapshot only when
+its test is intentionally removed or renamed. After changing contract state
+or authorization behavior, run the relevant test and review the generated
+snapshot diff before committing it. Do not delete the snapshot directory or
+regenerate every snapshot as a cleanup shortcut.
+
+Use a focused test command while updating a snapshot:
+
+```bash
+cargo test -p stellar-tickets-ticketing <test_name>
+```
