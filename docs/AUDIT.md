@@ -62,7 +62,7 @@ stellar contract install --source <testnet-key> --network testnet \
 
 ## Test suite
 
-The contract includes 30+ unit tests in [`contracts/ticketing/src/test.rs`](../contracts/ticketing/src/test.rs) covering:
+The contract includes 30+ unit tests in [`contracts/ticketing/src/test/`](../contracts/ticketing/src/test/) covering:
 
 - Happy path for every entry point (issue, transfer, check-in, revoke, resale)
 - Authorization failures (non-organizer, non-owner, admin-only)

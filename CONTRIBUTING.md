@@ -46,7 +46,7 @@ lines ("Add resale price cap test" not "Added" or "Adding").
 
 ## Writing contract tests
 
-Tests are organized in [`contracts/ticketing/src/test.rs`](contracts/ticketing/src/test.rs) and follow these patterns:
+Tests are organized in [`contracts/ticketing/src/test/`](contracts/ticketing/src/test/) and follow these patterns:
 
 ### Setup function
 Use a `setup()` helper to initialize the test environment:

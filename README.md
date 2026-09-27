@@ -118,7 +118,7 @@ subscribe to these instead of polling every ticket on every block — see
 
 See [`contracts/ticketing/src/lib.rs`](contracts/ticketing/src/lib.rs) for the
 full implementation and
-[`contracts/ticketing/src/test.rs`](contracts/ticketing/src/test.rs) for the
+[`contracts/ticketing/src/test/`](contracts/ticketing/src/test/) for the
 behavioral spec — 30 tests covering issuance, check-in idempotency,
 revocation, resale price caps, royalty splitting, multi-organizer isolation,
 and free/comp-ticket edge cases.
@@ -311,7 +311,7 @@ Once deployed, hand `<contract-id>` to the backend as its
 │   └── ticketing
 │       ├── src
 │       │   ├── lib.rs             # contract logic, storage, errors, events
-│       │   └── test.rs            # 30 unit tests (soroban-sdk testutils)
+│       │   └── test/              # unit tests (soroban-sdk testutils)
 │       ├── test_snapshots         # recorded auth/storage snapshots per test
 │       ├── Makefile
 │       └── Cargo.toml

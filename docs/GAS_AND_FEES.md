@@ -27,7 +27,7 @@ test environment — they are regression guards, not network limits.
 | `buy_resale`     | 10,000,000                 | 1,000,000               |
 
 The values are read from `env.cost_estimate().budget()` in
-`contracts/ticketing/src/test.rs`. The SDK resets budget metering before every
+`contracts/ticketing/src/test/`. The SDK resets budget metering before every
 top-level contract invocation, so each assertion meters exactly the one call
 its test names.
 

@@ -1,7 +1,7 @@
 # Testing
 
 The test suite in
-[`contracts/ticketing/src/test.rs`](../contracts/ticketing/src/test.rs)
+[`contracts/ticketing/src/test/`](../contracts/ticketing/src/test/)
 uses `soroban_sdk::testutils` with `env.mock_all_auths()`, so every
 `require_auth()` call succeeds without needing real signatures — this
 is standard practice for Soroban unit tests and keeps focus on

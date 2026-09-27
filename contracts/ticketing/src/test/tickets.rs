@@ -64,8 +64,8 @@ fn reading_a_ticket_does_not_extend_its_ttl() {
     let instance_ttl_after =
         env.as_contract(&contract_address, || env.storage().instance().get_ttl());
 
-    assert!(ticket_ttl_after > ticket_ttl_before);
-    assert!(instance_ttl_after > instance_ttl_before);
+    assert_eq!(ticket_ttl_after, ticket_ttl_before);
+    assert_eq!(instance_ttl_after, instance_ttl_before);
 }
 
 /// Read paths deliberately do not bump TTL.
@@ -93,7 +93,21 @@ fn reading_an_event_does_not_extend_its_ttl() {
     let instance_ttl_after =
         env.as_contract(&contract_address, || env.storage().instance().get_ttl());
 
-    assert!(instance_ttl_after > instance_ttl_before);
+    assert_eq!(instance_ttl_after, instance_ttl_before);
+}
+
+#[test]
+fn ticket_ids_are_sequential_and_unique_across_fifty_mints() {
+    let (env, client, _token, _token_asset, _admin, organizer) = setup();
+    make_event(&env, &client, &organizer, 1);
+
+    for expected_id in 0..50u64 {
+        let owner = Address::generate(&env);
+        let ticket_id = issue_sample_ticket(&env, &client, &organizer, 1, &owner, 1_000);
+
+        assert_eq!(ticket_id, expected_id);
+        assert_eq!(client.verify_ticket(&ticket_id).owner, owner);
+    }
 }
 
 #[test]
@@ -244,7 +258,12 @@ fn issue_ticket_and_purchase_primary_share_the_id_counter() {
     );
 
     assert_eq!(
-        [first_issued, first_purchased, second_issued, second_purchased],
+        [
+            first_issued,
+            first_purchased,
+            second_issued,
+            second_purchased
+        ],
         [0, 1, 2, 3]
     );
 }
@@ -335,21 +354,11 @@ fn set_tier_price_is_organizer_only_and_rejects_negative_prices() {
     let stranger = Address::generate(&env);
 
     assert_eq!(
-        client.try_set_tier_price(
-            &stranger,
-            &1,
-            &String::from_str(&env, "GA"),
-            &0i128
-        ),
+        client.try_set_tier_price(&stranger, &1, &String::from_str(&env, "GA"), &0i128),
         Err(Ok(Error::NotOrganizer))
     );
     assert_eq!(
-        client.try_set_tier_price(
-            &organizer,
-            &1,
-            &String::from_str(&env, "GA"),
-            &-1i128
-        ),
+        client.try_set_tier_price(&organizer, &1, &String::from_str(&env, "GA"), &-1i128),
         Err(Ok(Error::InvalidPrice))
     );
 }

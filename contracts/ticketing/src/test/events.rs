@@ -203,7 +203,7 @@ fn events_and_tickets_with_unicode_names_and_categories() {
     let (env, client, _token, _token_asset, _admin, organizer) = setup();
 
     let unicode_name = String::from_str(&env, "東京ライブ 2026 🎵 (Tokyo Live)");
-    let unicode_category = String::from_str(&env, "音楽・コンサート / Festival ✨");
+    let unicode_category = String::from_str(&env, "音楽 / Festival ✨");
 
     client.create_event(
         &organizer,

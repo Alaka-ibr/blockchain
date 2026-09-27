@@ -116,4 +116,4 @@ When a buyer purchases a resale listing via `buy_resale`:
 
 Per issue #206, every state-changing entry point checks authorization (`require_auth()`) **before** validating state. This ordering ensures that an unauthenticated caller who invokes `revoke_ticket` on a non-existent ticket gets an auth error, not `TicketNotFound` — preventing information leakage about which tickets exist.
 
-See [`contracts/ticketing/src/lib.rs`](../contracts/ticketing/src/lib.rs) and the `require_auth_runs_before_business_validation` test in `test.rs` for details.
+See [`contracts/ticketing/src/lib.rs`](../contracts/ticketing/src/lib.rs) and the `require_auth_runs_before_business_validation` test in `contracts/ticketing/src/test/auth.rs` for details.
