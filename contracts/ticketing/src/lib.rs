@@ -404,23 +404,77 @@ impl TicketingContract {
         Ok(ticket_id)
     }
 
-    /// Fully on-chain primary sale: buyer pays the organizer directly in
-    /// `payment_token`, then the ticket is minted to the buyer atomically.
+    /// Sets the organizer's primary sale price for one of an event's tiers
+    /// (issue #127). `purchase_primary` charges exactly this price, so the
+    /// buyer can no longer choose what to pay — underpaying (including
+    /// paying zero) is impossible. A price of 0 marks the tier as free.
+    ///
+    /// The organizer can change a tier price at any time; tickets already
+    /// sold keep the price they were bought at in `original_price`, which is
+    /// what resale caps and refunds are computed from.
+    pub fn set_tier_price(
+        env: Env,
+        organizer: Address,
+        event_id: u64,
+        tier: String,
+        price: i128,
+    ) -> Result<(), Error> {
+        Self::extend_instance_ttl(&env);
+        organizer.require_auth();
+        if price < 0 {
+            return Err(Error::InvalidPrice);
+        }
+        let event = Self::get_event_inner(&env, event_id)?;
+        if event.organizer != organizer {
+            return Err(Error::NotOrganizer);
+        }
+        let key = DataKey::TierPrice(event_id, tier);
+        env.storage().persistent().set(&key, &price);
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, LEDGER_THRESHOLD, LEDGER_BUMP);
+        Ok(())
+    }
+
+    /// Reads back the primary sale price configured for a tier (issue #127).
+    /// Returns `TierPriceNotSet` when the organizer has not priced the tier.
+    pub fn get_tier_price(env: Env, event_id: u64, tier: String) -> Result<i128, Error> {
+        Self::tier_price(&env, event_id, &tier)
+    }
+
+    /// Internal lookup of an event's tier price, also extending the entry's
+    /// TTL so a live sale never expires mid-transaction.
+    fn tier_price(env: &Env, event_id: u64, tier: &String) -> Result<i128, Error> {
+        let key = DataKey::TierPrice(event_id, tier.clone());
+        let price: i128 = env
+            .storage()
+            .persistent()
+            .get(&key)
+            .ok_or(Error::TierPriceNotSet)?;
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, LEDGER_THRESHOLD, LEDGER_BUMP);
+        Ok(price)
+    }
+
+    /// Buys a primary ticket at the event's tier price.
+    ///
+    /// The price is the organizer's configured `set_tier_price` value for the
+    /// tier — it is no longer supplied by the caller, so a buyer cannot
+    /// underpay a paid event (issue #127). Fails with `TierPriceNotSet` when
+    /// the organizer has not priced that tier.
     pub fn purchase_primary(
         env: Env,
         buyer: Address,
         event_id: u64,
         tier: String,
         seat: String,
-        price: i128,
     ) -> Result<u64, Error> {
         Self::extend_instance_ttl(&env);
         buyer.require_auth();
-        if price < 0 {
-            return Err(Error::InvalidPrice);
-        }
         Self::enforce_purchase_throttle(&env, &buyer)?;
         let mut event = Self::get_event_inner(&env, event_id)?;
+        let price = Self::tier_price(&env, event_id, &tier)?;
         let token_client = token::Client::new(&env, &Self::payment_token_for_event(&env, &event)?);
         if price > 0 {
             if event.escrow_enabled {
@@ -774,6 +828,10 @@ impl TicketingContract {
             return Err(Error::NotOrganizer);
         }
         ticket.status = TicketStatus::Revoked;
+        // A revoked ticket must not keep a live resale asking price (issue
+        // #129): `resale_price` is the marker a listing is read from, so
+        // leaving it non-zero kept listing data attached to a dead ticket.
+        ticket.resale_price = 0;
         Self::remove_gift_claim(&env, ticket_id);
         Self::save_ticket(&env, ticket_id, &ticket);
         Ok(())

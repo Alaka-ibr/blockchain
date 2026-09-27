@@ -103,12 +103,12 @@ fn escrowed_primary_sale_refreshes_the_event_ttl() {
     env.ledger().set_sequence_number(STALE);
     assert!(event_ttl(&env, &client, 1) < LEDGER_THRESHOLD);
 
+    client.set_tier_price(&organizer, &1, &String::from_str(&env, "GA"), &2_000i128);
     client.purchase_primary(
         &buyer,
         &1,
         &String::from_str(&env, "GA"),
         &String::from_str(&env, "1"),
-        &2_000i128,
     );
 
     assert_eq!(client.get_event(&1).escrow_balance, 2_000);
@@ -134,12 +134,12 @@ fn release_escrow_refreshes_the_event_ttl() {
     client.enable_escrow(&organizer, &1, &500u32);
     let buyer = Address::generate(&env);
     token_asset.mint(&buyer, &10_000i128);
+    client.set_tier_price(&organizer, &1, &String::from_str(&env, "GA"), &2_000i128);
     client.purchase_primary(
         &buyer,
         &1,
         &String::from_str(&env, "GA"),
         &String::from_str(&env, "1"),
-        &2_000i128,
     );
 
     env.ledger().set_sequence_number(LONG_AFTER);
