@@ -170,12 +170,12 @@ fn purchase_primary_pays_organizer_on_chain() {
     let buyer = Address::generate(&env);
     token_asset.mint(&buyer, &10_000i128);
 
+    client.set_tier_price(&organizer, &1, &String::from_str(&env, "GA"), &2_000i128);
     let ticket_id = client.purchase_primary(
         &buyer,
         &1,
         &String::from_str(&env, "GA"),
         &String::from_str(&env, "1"),
-        &2_000i128,
     );
 
     assert_eq!(token.balance(&organizer), 2_000);
@@ -193,12 +193,12 @@ fn purchase_primary_increments_tickets_issued() {
     let buyer = Address::generate(&env);
     token_asset.mint(&buyer, &10_000i128);
 
+    client.set_tier_price(&organizer, &1, &String::from_str(&env, "GA"), &1_000i128);
     client.purchase_primary(
         &buyer,
         &1,
         &String::from_str(&env, "GA"),
         &String::from_str(&env, "1"),
-        &1_000i128,
     );
     assert_eq!(client.get_event(&1).tickets_issued, 1);
 }
@@ -213,20 +213,20 @@ fn issue_ticket_and_purchase_primary_share_the_id_counter() {
     let second_buyer = Address::generate(&env);
 
     let first_issued = issue_sample_ticket(&env, &client, &organizer, 1, &issued_owner, 0);
+    client.set_tier_price(&organizer, &1, &String::from_str(&env, "GA"), &0);
     let first_purchased = client.purchase_primary(
         &first_buyer,
         &1,
         &String::from_str(&env, "GA"),
         &String::from_str(&env, "1"),
-        &0,
     );
     let second_issued = issue_sample_ticket(&env, &client, &organizer, 1, &issued_owner, 0);
+    client.set_tier_price(&organizer, &1, &String::from_str(&env, "GA"), &0);
     let second_purchased = client.purchase_primary(
         &second_buyer,
         &1,
         &String::from_str(&env, "GA"),
         &String::from_str(&env, "2"),
-        &0,
     );
 
     assert_eq!(
@@ -241,14 +241,139 @@ fn purchase_primary_allows_a_free_event() {
     make_event(&env, &client, &organizer, 1);
     let buyer = Address::generate(&env);
 
+    client.set_tier_price(&organizer, &1, &String::from_str(&env, "FREE"), &0i128);
     let ticket_id = client.purchase_primary(
         &buyer,
         &1,
         &String::from_str(&env, "FREE"),
         &String::from_str(&env, "GA"),
-        &0i128,
     );
     assert_eq!(client.get_ticket(&ticket_id).original_price, 0);
+}
+
+#[test]
+fn purchase_primary_charges_the_organizers_tier_price_not_a_caller_supplied_one() {
+    let (env, client, token, token_asset, _admin, organizer) = setup();
+    make_event(&env, &client, &organizer, 1);
+    let buyer = Address::generate(&env);
+    token_asset.mint(&buyer, &10_000i128);
+
+    client.set_tier_price(&organizer, &1, &String::from_str(&env, "GA"), &2_000i128);
+
+    // The purchase takes no price argument at all any more: the only way to
+    // buy the tier is at the organizer's price, so underpayment is impossible.
+    let ticket_id = client.purchase_primary(
+        &buyer,
+        &1,
+        &String::from_str(&env, "GA"),
+        &String::from_str(&env, "1"),
+    );
+
+    assert_eq!(token.balance(&organizer), 2_000);
+    assert_eq!(token.balance(&buyer), 8_000);
+    assert_eq!(client.get_ticket(&ticket_id).original_price, 2_000);
+}
+
+#[test]
+fn purchase_primary_cannot_bypass_the_tier_price_with_a_paid_tier_requested_as_free() {
+    let (env, client, token, token_asset, _admin, organizer) = setup();
+    make_event(&env, &client, &organizer, 1);
+    let buyer = Address::generate(&env);
+    token_asset.mint(&buyer, &10_000i128);
+
+    client.set_tier_price(&organizer, &1, &String::from_str(&env, "GA"), &2_000i128);
+
+    // Asking for a tier the organizer never priced cannot be used to pay 0.
+    let result = client.try_purchase_primary(
+        &buyer,
+        &1,
+        &String::from_str(&env, "VIP"),
+        &String::from_str(&env, "1"),
+    );
+    assert_eq!(result, Err(Ok(Error::TierPriceNotSet)));
+
+    // Nothing moved and no ticket was minted.
+    assert_eq!(token.balance(&buyer), 10_000);
+    assert_eq!(client.get_event(&1).tickets_issued, 0);
+}
+
+#[test]
+fn purchase_primary_fails_when_the_organizer_has_not_priced_the_tier() {
+    let (env, client, token, token_asset, _admin, organizer) = setup();
+    make_event(&env, &client, &organizer, 1);
+    let buyer = Address::generate(&env);
+    token_asset.mint(&buyer, &10_000i128);
+
+    let result = client.try_purchase_primary(
+        &buyer,
+        &1,
+        &String::from_str(&env, "GA"),
+        &String::from_str(&env, "1"),
+    );
+    assert_eq!(result, Err(Ok(Error::TierPriceNotSet)));
+    assert_eq!(token.balance(&buyer), 10_000);
+}
+
+#[test]
+fn set_tier_price_is_organizer_only_and_rejects_negative_prices() {
+    let (env, client, _token, _token_asset, _admin, organizer) = setup();
+    make_event(&env, &client, &organizer, 1);
+    let stranger = Address::generate(&env);
+
+    assert_eq!(
+        client.try_set_tier_price(
+            &stranger,
+            &1,
+            &String::from_str(&env, "GA"),
+            &0i128
+        ),
+        Err(Ok(Error::NotOrganizer))
+    );
+    assert_eq!(
+        client.try_set_tier_price(
+            &organizer,
+            &1,
+            &String::from_str(&env, "GA"),
+            &-1i128
+        ),
+        Err(Ok(Error::InvalidPrice))
+    );
+}
+
+#[test]
+fn set_tier_price_updates_the_price_for_later_purchases_only() {
+    let (env, client, token, token_asset, _admin, organizer) = setup();
+    make_event(&env, &client, &organizer, 1);
+    let first_buyer = Address::generate(&env);
+    let second_buyer = Address::generate(&env);
+    token_asset.mint(&first_buyer, &10_000i128);
+    token_asset.mint(&second_buyer, &10_000i128);
+
+    client.set_tier_price(&organizer, &1, &String::from_str(&env, "GA"), &1_000i128);
+    let first_ticket = client.purchase_primary(
+        &first_buyer,
+        &1,
+        &String::from_str(&env, "GA"),
+        &String::from_str(&env, "1"),
+    );
+
+    // The organizer raises the price; the ticket already sold keeps its own
+    // original_price (resale caps and refunds are derived from it).
+    client.set_tier_price(&organizer, &1, &String::from_str(&env, "GA"), &1_500i128);
+    let second_ticket = client.purchase_primary(
+        &second_buyer,
+        &1,
+        &String::from_str(&env, "GA"),
+        &String::from_str(&env, "2"),
+    );
+
+    assert_eq!(client.get_ticket(&first_ticket).original_price, 1_000);
+    assert_eq!(client.get_ticket(&second_ticket).original_price, 1_500);
+    assert_eq!(token.balance(&organizer), 2_500);
+    assert_eq!(
+        client.get_tier_price(&1, &String::from_str(&env, "GA")),
+        1_500
+    );
 }
 
 #[test]
@@ -669,12 +794,12 @@ fn revoke_with_refund_returns_payment_to_owner() {
     let buyer = Address::generate(&env);
     token_asset.mint(&buyer, &10_000i128);
 
+    client.set_tier_price(&organizer, &1, &String::from_str(&env, "GA"), &2_000i128);
     let ticket_id = client.purchase_primary(
         &buyer,
         &1,
         &String::from_str(&env, "GA"),
         &String::from_str(&env, "1"),
-        &2_000i128,
     );
 
     assert_eq!(token.balance(&organizer), 2_000);
