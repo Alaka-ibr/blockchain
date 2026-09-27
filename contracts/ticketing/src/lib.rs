@@ -609,6 +609,12 @@ impl TicketingContract {
     ) -> Result<(), Error> {
         Self::extend_instance_ttl(&env);
         from.require_auth();
+        // Issue #128: reject a self-transfer. It would otherwise consume a
+        // slot against the per-ticket transfer limit and clear the resale
+        // price and any gift claim without moving ownership.
+        if from == to {
+            return Err(Error::SelfTransfer);
+        }
         let mut ticket = Self::get_ticket_inner(&env, ticket_id)?;
         if ticket.owner != from {
             return Err(Error::NotOwner);
@@ -1085,6 +1091,12 @@ impl TicketingContract {
         let mut ticket = Self::get_ticket_inner(&env, ticket_id)?;
         if ticket.status != TicketStatus::Resale {
             return Err(Error::NotForResale);
+        }
+        // Issue #128: a seller must not be able to buy their own listing,
+        // which would move the ticket to itself, consume a transfer slot and
+        // pay a royalty to the organizer for nothing.
+        if ticket.owner == buyer {
+            return Err(Error::SelfPurchase);
         }
         let event = Self::get_event_inner(&env, ticket.event_id)?;
         if Self::resale_closed(&env, &event) {

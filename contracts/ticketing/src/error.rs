@@ -84,4 +84,8 @@ pub enum Error {
     EmptyNameOrCategory = 37,
     /// The supplied name, category, tier or seat exceeds its maximum length.
     StringTooLong = 38,
+    /// A ticket cannot be transferred to its current owner.
+    SelfTransfer = 39,
+    /// The seller cannot buy their own resale listing.
+    SelfPurchase = 40,
 }
