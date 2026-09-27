@@ -10,6 +10,9 @@
   the point of entry.
 - **Resale cap** — `max_resale_multiplier_bps` on the event; the
   ceiling a ticket can be relisted for, relative to its original price.
+  Must be at least 10,000 bps (face value): a lower multiplier would cap
+  every resale below face value and make resale impossible, so it is
+  rejected with `InvalidMultiplier` at creation.
 - **Royalty** — `royalty_bps` on the event; the organizer's cut of
   every resale, paid atomically with the ownership transfer.
 

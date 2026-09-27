@@ -18,6 +18,7 @@ mod budget;
 mod events;
 pub mod helpers;
 mod resale;
+mod resale_multiplier;
 mod tickets;
 mod transfer_controls;
 mod ttl;

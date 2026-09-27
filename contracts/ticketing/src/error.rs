@@ -78,4 +78,6 @@ pub enum Error {
     ResalePriceBelowFloor = 34,
     /// The event has no primary sale price configured for the requested tier.
     TierPriceNotSet = 35,
+    /// The resale multiplier is below the 10_000 bps face-value floor.
+    InvalidMultiplier = 36,
 }

@@ -171,6 +171,14 @@ impl TicketingContract {
         if royalty_bps > 10_000 {
             return Err(Error::InvalidRoyalty);
         }
+        // Issue #124: a multiplier below face value (10_000 bps) makes every
+        // resale impossible — `list_for_resale` computes the cap as
+        // `original_price * max_resale_multiplier_bps / 10_000`, which lands
+        // below the face value and rejects any listing at or above it. Require
+        // the multiplier to be at least face value.
+        if max_resale_multiplier_bps < BPS_DENOMINATOR {
+            return Err(Error::InvalidMultiplier);
+        }
         if starts_at <= env.ledger().timestamp() {
             return Err(Error::InvalidEventTime);
         }
@@ -228,6 +236,14 @@ impl TicketingContract {
         organizer.require_auth();
         if royalty_bps > 10_000 {
             return Err(Error::InvalidRoyalty);
+        }
+        // Issue #124: a multiplier below face value (10_000 bps) makes every
+        // resale impossible — `list_for_resale` computes the cap as
+        // `original_price * max_resale_multiplier_bps / 10_000`, which lands
+        // below the face value and rejects any listing at or above it. Require
+        // the multiplier to be at least face value.
+        if max_resale_multiplier_bps < BPS_DENOMINATOR {
+            return Err(Error::InvalidMultiplier);
         }
         if starts_at <= env.ledger().timestamp() {
             return Err(Error::InvalidEventTime);
