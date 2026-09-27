@@ -32,6 +32,29 @@ fn get_ticket_reports_not_found_for_an_unknown_id() {
 }
 
 #[test]
+fn is_valid_matches_owner_and_ticket_status() {
+    let (env, client, _token, _token_asset, _admin, organizer) = setup();
+    make_event(&env, &client, &organizer, 1);
+    let owner = Address::generate(&env);
+    let other_owner = Address::generate(&env);
+    let ticket_id = client.issue_ticket(
+        &organizer,
+        &1,
+        &owner,
+        &String::from_str(&env, "GA"),
+        &String::from_str(&env, "A1"),
+        &1_000i128,
+    );
+
+    assert!(client.is_valid(&ticket_id, &owner));
+    assert!(!client.is_valid(&ticket_id, &other_owner));
+    assert!(!client.is_valid(&999, &owner));
+
+    client.check_in(&organizer, &ticket_id);
+    assert!(!client.is_valid(&ticket_id, &owner));
+}
+
+#[test]
 fn issue_ticket_rejects_a_negative_price() {
     let (env, client, _token, _token_asset, _admin, organizer) = setup();
     make_event(&env, &client, &organizer, 1);
