@@ -954,3 +954,30 @@ fn revoke_ticket_on_a_used_ticket_succeeds_and_marks_it_revoked() {
     let result = client.try_check_in(&organizer, &ticket_id);
     assert_eq!(result, Err(Ok(Error::Revoked)));
 }
+
+#[test]
+fn revoke_ticket_clears_the_resale_listing_data() {
+    let (env, client, _token, _token_asset, _admin, organizer) = setup();
+    make_event(&env, &client, &organizer, 1); // cap is 120% of face value
+    let buyer = Address::generate(&env);
+    let ticket_id = client.issue_ticket(
+        &organizer,
+        &1,
+        &buyer,
+        &String::from_str(&env, "GA"),
+        &String::from_str(&env, "unassigned"),
+        &1_000i128,
+    );
+
+    client.list_for_resale(&buyer, &ticket_id, &1_200i128);
+    let listed = client.get_ticket(&ticket_id);
+    assert_eq!(listed.status, TicketStatus::Resale);
+    assert_eq!(listed.resale_price, 1_200);
+
+    client.revoke_ticket(&organizer, &ticket_id);
+
+    // #129 — the asking price must not survive on a revoked ticket.
+    let revoked = client.get_ticket(&ticket_id);
+    assert_eq!(revoked.status, TicketStatus::Revoked);
+    assert_eq!(revoked.resale_price, 0);
+}

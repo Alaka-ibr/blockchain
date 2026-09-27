@@ -828,6 +828,10 @@ impl TicketingContract {
             return Err(Error::NotOrganizer);
         }
         ticket.status = TicketStatus::Revoked;
+        // A revoked ticket must not keep a live resale asking price (issue
+        // #129): `resale_price` is the marker a listing is read from, so
+        // leaving it non-zero kept listing data attached to a dead ticket.
+        ticket.resale_price = 0;
         Self::remove_gift_claim(&env, ticket_id);
         Self::save_ticket(&env, ticket_id, &ticket);
         Ok(())
