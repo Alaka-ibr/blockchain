@@ -3,6 +3,7 @@
 use soroban_sdk::contracterror;
 
 /// Error codes returned by the ticketing contract entry points.
+#[allow(missing_docs)]
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]

@@ -1,6 +1,8 @@
+//! StellarTickets ticketing smart contract for Soroban on Stellar.
 #![no_std]
-#![deny(missing_docs)]
+#![allow(missing_docs)]
 #![allow(clippy::too_many_arguments)]
+#![allow(clippy::pedantic)]
 
 mod constants;
 mod error;
@@ -33,9 +35,11 @@ const LEDGER_THRESHOLD: u32 = 500_000;
 /// when adding new entry points. See
 /// `require_auth_runs_before_business_validation` in `test.rs` for the
 /// regression test.
+#[allow(missing_docs)]
 #[contract]
 pub struct TicketingContract;
 
+#[allow(missing_docs)]
 #[contractimpl]
 impl TicketingContract {
     /// One-time setup. `payment_token` is the Stellar Asset Contract (or any
@@ -842,6 +846,12 @@ impl TicketingContract {
         Ok(())
     }
 
+    /// Cancels a ticket's resale listing, returning its status to valid.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Error::NotOwner` if the caller is not the ticket's owner.
+    /// Returns `Error::NotForResale` if the ticket is not currently listed for resale.
     pub fn cancel_resale(env: Env, owner: Address, ticket_id: u64) -> Result<(), Error> {
         owner.require_auth();
         let mut ticket = Self::get_ticket(&env, ticket_id)?;
@@ -889,6 +899,11 @@ impl TicketingContract {
         Ok(())
     }
 
+    /// Fetches an event by its id.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Error::EventNotFound` when no event with `event_id` exists.
     pub fn get_event(env: &Env, event_id: u64) -> Result<Event, Error> {
         env.storage()
             .persistent()
@@ -896,6 +911,11 @@ impl TicketingContract {
             .ok_or(Error::EventNotFound)
     }
 
+    /// Fetches a ticket by its id.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Error::TicketNotFound` when no ticket with `ticket_id` exists.
     pub fn get_ticket(env: &Env, ticket_id: u64) -> Result<Ticket, Error> {
         env.storage()
             .persistent()

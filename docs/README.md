@@ -9,6 +9,7 @@
 - [THREAT_MODEL.md](THREAT_MODEL.md) — assets, trust boundaries, and residual risks
 - [TESTING.md](TESTING.md) — test suite coverage
 - [DEPLOYMENT.md](DEPLOYMENT.md) — deployment checklist
+- [../DEPLOYMENTS.md](../DEPLOYMENTS.md) — deployment records and template
 - [UPGRADES.md](UPGRADES.md) — why there's no upgrade hook
 - [GAS_AND_FEES.md](GAS_AND_FEES.md) — fee model
 - [INDUSTRIES.md](INDUSTRIES.md) — supported categories

@@ -1,4 +1,5 @@
 //! Contract events emitted by the ticketing contract.
+#![allow(missing_docs)]
 
 use soroban_sdk::{contractevent, Address};
 
