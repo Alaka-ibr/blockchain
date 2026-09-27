@@ -486,3 +486,21 @@ fn create_event_rejects_zero_max_resale_multiplier() {
     );
     assert_eq!(result, Err(Ok(Error::InvalidMultiplier)));
 }
+
+/// #142: `purchase_primary` on an event id that was never created must
+/// surface `Error::EventNotFound` rather than panicking or falling through
+/// to a price/tier lookup on default-initialized state.
+#[test]
+fn purchase_primary_returns_event_not_found_for_a_nonexistent_event() {
+    let (env, client, _token, token_asset, _admin, _organizer) = setup();
+    let buyer = Address::generate(&env);
+    token_asset.mint(&buyer, &10_000i128);
+
+    let result = client.try_purchase_primary(
+        &buyer,
+        &999,
+        &String::from_str(&env, "GA"),
+        &String::from_str(&env, "1"),
+    );
+    assert_eq!(result, Err(Ok(Error::EventNotFound)));
+}
