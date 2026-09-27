@@ -58,6 +58,35 @@ fn list_for_resale_rejects_a_zero_price() {
     assert_eq!(result, Err(Ok(Error::InvalidPrice)));
 }
 
+/// #143: `list_for_resale` matches on `ticket.status` before touching the
+/// resale cap/floor, and `Used` is one of the two branches (with `Revoked`)
+/// that must reject rather than fall through to `_ => {}`. Checked in via
+/// `check_in` so the ticket reaches `Used` the same way it does in practice,
+/// rather than by writing the status directly.
+#[test]
+fn list_for_resale_rejects_a_used_ticket() {
+    let (env, client, _token, _token_asset, _admin, organizer) = setup();
+    make_event(&env, &client, &organizer, 1);
+    let owner = Address::generate(&env);
+    let ticket_id = client.issue_ticket(
+        &organizer,
+        &1,
+        &owner,
+        &String::from_str(&env, "GA"),
+        &String::from_str(&env, "1"),
+        &1_000i128,
+    );
+    client.check_in(&organizer, &ticket_id);
+    assert_eq!(client.get_ticket(&ticket_id).status, TicketStatus::Used);
+
+    let result = client.try_list_for_resale(&owner, &ticket_id, &1_100i128);
+    assert_eq!(result, Err(Ok(Error::AlreadyUsed)));
+    // Rejected before any resale state was written.
+    let ticket = client.get_ticket(&ticket_id);
+    assert_eq!(ticket.status, TicketStatus::Used);
+    assert_eq!(ticket.resale_price, 0);
+}
+
 #[test]
 fn list_for_resale_rejects_a_non_owner() {
     let (env, client, _token, _token_asset, _admin, organizer) = setup();
@@ -344,6 +373,13 @@ fn buy_resale_rejects_a_ticket_that_is_not_listed() {
     assert_eq!(result, Err(Ok(Error::NotForResale)));
 }
 
+/// #144: `transfer_ticket`'s status match only rejects `Used`/`Revoked`, so a
+/// `Resale`-listed ticket falls through to the happy path — direct transfer
+/// (gift, family member) must still work on a listed ticket, and must clear
+/// the listing rather than leave a stale resale price on the new owner's
+/// ticket. Explicit before/after assertions on every field the transfer
+/// touches, so a change that clears the price but forgets `transfers`, or
+/// vice versa, fails this test.
 #[test]
 fn transferring_a_resale_listed_ticket_clears_the_listing_state() {
     let (env, client, _token, _token_asset, _admin, organizer) = setup();
@@ -359,12 +395,18 @@ fn transferring_a_resale_listed_ticket_clears_the_listing_state() {
         &1_000i128,
     );
     client.list_for_resale(&seller, &ticket_id, &1_100i128);
+    let listed = client.get_ticket(&ticket_id);
+    assert_eq!(listed.status, TicketStatus::Resale);
+    assert_eq!(listed.resale_price, 1_100);
+    assert_eq!(listed.transfers, 0);
+
     client.transfer_ticket(&seller, &ticket_id, &friend);
 
     let ticket = client.get_ticket(&ticket_id);
     assert_eq!(ticket.status, TicketStatus::Valid);
     assert_eq!(ticket.resale_price, 0);
     assert_eq!(ticket.owner, friend);
+    assert_eq!(ticket.transfers, 1);
 }
 
 #[test]

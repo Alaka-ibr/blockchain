@@ -41,6 +41,57 @@ impl MaliciousReentrantToken {
     }
 }
 
+/// #145: `initialize` calls `admin.require_auth()` before writing any state,
+/// but nothing in the suite called it without `mock_all_auths()` blanket
+/// approval, so a regression that dropped the `require_auth()` call (or
+/// moved it after the first storage write) would not fail any existing test.
+/// Uses a fresh, un-initialized contract — `setup()` already calls
+/// `initialize` under the blanket mock — and mocks auth for a stranger
+/// address instead of the admin being initialized, matching the pattern
+/// `check_in_requires_the_organizers_auth` uses for the same class of gap.
+#[test]
+fn initialize_requires_admin_auth() {
+    let env = Env::default();
+    let admin = Address::generate(&env);
+    let payment_token = env
+        .register_stellar_asset_contract_v2(Address::generate(&env))
+        .address();
+    let contract_id = env.register(TicketingContract, ());
+    let client = TicketingContractClient::new(&env, &contract_id);
+
+    let stranger = Address::generate(&env);
+    env.mock_auths(&[MockAuth {
+        address: &stranger,
+        invoke: &MockAuthInvoke {
+            contract: &client.address,
+            fn_name: "initialize",
+            args: (&admin, &payment_token).into_val(&env),
+            sub_invokes: &[],
+        },
+    }]);
+    let result = client.try_initialize(&admin, &payment_token);
+    // A host auth failure, not a contract Error — and nothing was written.
+    assert!(matches!(result, Err(Err(_))));
+    assert!(!env.as_contract(&contract_id, || {
+        env.storage().instance().has(&DataKey::Admin)
+    }));
+
+    // With the admin's own auth the same call succeeds.
+    env.mock_auths(&[MockAuth {
+        address: &admin,
+        invoke: &MockAuthInvoke {
+            contract: &client.address,
+            fn_name: "initialize",
+            args: (&admin, &payment_token).into_val(&env),
+            sub_invokes: &[],
+        },
+    }]);
+    client.initialize(&admin, &payment_token);
+    let auths = env.auths();
+    assert_eq!(auths.len(), 1);
+    assert_eq!(auths[0].0, admin);
+}
+
 #[test]
 fn initialize_rejects_a_second_call() {
     let (env, client, _token, _token_asset, admin, _organizer) = setup();
