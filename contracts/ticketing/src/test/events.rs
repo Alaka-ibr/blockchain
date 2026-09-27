@@ -470,7 +470,9 @@ fn create_event_accepts_a_royalty_of_exactly_10_000_bps() {
 #[test]
 fn zero_max_resale_multiplier_event_is_created_but_blocks_all_resale() {
     let (env, client, _token, _token_asset, _admin, organizer) = setup();
-    make_custom_event(&env, &client, &organizer, 1, "Event", "concert", 0, 500, 10_000);
+    make_custom_event(
+        &env, &client, &organizer, 1, "Event", "concert", 0, 500, 10_000,
+    );
     assert_eq!(client.get_event(&1).max_resale_multiplier_bps, 0);
 
     let buyer = Address::generate(&env);

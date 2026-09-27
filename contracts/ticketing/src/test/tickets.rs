@@ -33,7 +33,7 @@ fn issues_and_verifies_ticket() {
 }
 
 #[test]
-fn reading_ticket_extends_ticket_and_instance_ttl() {
+fn reading_a_ticket_does_not_extend_its_ttl() {
     let (env, client, _token, _token_asset, _admin, organizer) = setup();
     make_event(&env, &client, &organizer, 1);
     let owner = Address::generate(&env);
@@ -49,27 +49,37 @@ fn reading_ticket_extends_ticket_and_instance_ttl() {
     env.ledger()
         .with_mut(|ledger| ledger.sequence_number = 40_000);
     let key = DataKey::Ticket(ticket_id);
-    let ticket_ttl_before = env.storage().persistent().get_ttl(&key);
-    let instance_ttl_before = env.storage().instance().get_ttl();
+    let before = env.as_contract(&client.address, || env.storage().persistent().get_ttl(&key));
 
-    client.verify_ticket(&ticket_id);
+    client.get_ticket(&ticket_id);
 
-    assert!(env.storage().persistent().get_ttl(&key) > ticket_ttl_before);
-    assert!(env.storage().instance().get_ttl() > instance_ttl_before);
+    let after = env.as_contract(&client.address, || env.storage().persistent().get_ttl(&key));
+    assert_eq!(before, after, "a read must not write");
 }
 
+/// Read paths deliberately do not bump TTL.
+///
+/// An earlier draft of this test asserted the opposite, and that assertion is
+/// what the broken merge left behind. Bumping a TTL is a state write: doing it
+/// inside `get_event`/`get_ticket` would make every read cost fees and consume
+/// ledger write budget, and it would mean a query mutates state. The contract
+/// instead refreshes TTL on the write paths that matter, via `save_ticket` and
+/// the `extend_ttl` calls next to each mutation. These tests pin that
+/// decision so a future change has to argue with it rather than reintroduce it.
 #[test]
-fn reading_event_extends_instance_ttl() {
+fn reading_an_event_does_not_extend_its_ttl() {
     let (env, client, _token, _token_asset, _admin, organizer) = setup();
     make_event(&env, &client, &organizer, 1);
 
     env.ledger()
         .with_mut(|ledger| ledger.sequence_number = 40_000);
-    let instance_ttl_before = env.storage().instance().get_ttl();
+    let key = DataKey::Event(1);
+    let before = env.as_contract(&client.address, || env.storage().persistent().get_ttl(&key));
 
     client.get_event(&1);
 
-    assert!(env.storage().instance().get_ttl() > instance_ttl_before);
+    let after = env.as_contract(&client.address, || env.storage().persistent().get_ttl(&key));
+    assert_eq!(before, after, "a read must not write");
 }
 
 #[test]
@@ -403,6 +413,32 @@ fn check_in_marks_used_and_rejects_reentry() {
     assert_eq!(result, Err(Ok(Error::AlreadyUsed)));
 }
 
+/// Issue #131: scanning in a ticket that is listed for resale must clear the
+/// listing price. The ticket is now `Used` and can never be bought, so a
+/// leftover `resale_price` is stale state that `get_ticket` still reports.
+#[test]
+fn check_in_clears_a_pending_resale_listing() {
+    let (env, client, _token, _token_asset, _admin, organizer) = setup();
+    make_event(&env, &client, &organizer, 1);
+    let buyer = Address::generate(&env);
+    let ticket_id = client.issue_ticket(
+        &organizer,
+        &1,
+        &buyer,
+        &String::from_str(&env, "GA"),
+        &String::from_str(&env, "1"),
+        &1_000i128,
+    );
+    client.list_for_resale(&buyer, &ticket_id, &1_100i128);
+    assert_eq!(client.get_ticket(&ticket_id).resale_price, 1_100);
+
+    client.check_in(&organizer, &ticket_id);
+
+    let ticket = client.get_ticket(&ticket_id);
+    assert_eq!(ticket.status, TicketStatus::Used);
+    assert_eq!(ticket.resale_price, 0);
+}
+
 #[test]
 fn check_in_rejects_the_wrong_organizer() {
     let (env, client, _token, _token_asset, _admin, organizer) = setup();
@@ -450,6 +486,46 @@ fn check_in_batch_marks_all_tickets_used() {
     client.check_in_batch(&organizer, &batch);
     assert_eq!(client.get_ticket(&t1).status, TicketStatus::Used);
     assert_eq!(client.get_ticket(&t2).status, TicketStatus::Used);
+}
+
+/// Issue #131: the batch path clears listings too, not just `check_in`.
+#[test]
+fn check_in_batch_clears_pending_resale_listings() {
+    let (env, client, _token, _token_asset, _admin, organizer) = setup();
+    make_event(&env, &client, &organizer, 1);
+    let buyer = Address::generate(&env);
+    let t1 = client.issue_ticket(
+        &organizer,
+        &1,
+        &buyer,
+        &String::from_str(&env, "GA"),
+        &String::from_str(&env, "1"),
+        &1_000i128,
+    );
+    let t2 = client.issue_ticket(
+        &organizer,
+        &1,
+        &buyer,
+        &String::from_str(&env, "GA"),
+        &String::from_str(&env, "2"),
+        &1_000i128,
+    );
+    // Only the first ticket is listed; the second stays unlisted. Both must
+    // come back with a cleared price.
+    client.list_for_resale(&buyer, &t1, &1_100i128);
+    assert_eq!(client.get_ticket(&t1).resale_price, 1_100);
+
+    let mut batch = Vec::new(&env);
+    batch.push_back(t1);
+    batch.push_back(t2);
+
+    client.check_in_batch(&organizer, &batch);
+
+    for ticket_id in [t1, t2] {
+        let ticket = client.get_ticket(&ticket_id);
+        assert_eq!(ticket.status, TicketStatus::Used);
+        assert_eq!(ticket.resale_price, 0);
+    }
 }
 
 #[test]
@@ -576,14 +652,7 @@ fn revoke_with_refund_returns_payment_to_owner() {
     client.revoke_with_refund(&organizer, &ticket_id, &true);
 
     assert_eq!(token.balance(&buyer), 10_000);
- fix/storage-ttl-snapshots
-    assert_eq!(
-        client.verify_ticket(&ticket_id).status,
-        TicketStatus::Revoked
-    );
-
     assert_eq!(client.get_ticket(&ticket_id).status, TicketStatus::Revoked);
- main
 }
 
 #[test]
@@ -719,7 +788,10 @@ fn revoke_ticket_on_a_used_ticket_succeeds_and_marks_it_revoked() {
     assert_eq!(client.verify_ticket(&ticket_id).status, TicketStatus::Used);
 
     client.revoke_ticket(&organizer, &ticket_id);
-    assert_eq!(client.verify_ticket(&ticket_id).status, TicketStatus::Revoked);
+    assert_eq!(
+        client.verify_ticket(&ticket_id).status,
+        TicketStatus::Revoked
+    );
 
     // The ticket now reports Revoked rather than AlreadyUsed on re-entry.
     let result = client.try_check_in(&organizer, &ticket_id);
