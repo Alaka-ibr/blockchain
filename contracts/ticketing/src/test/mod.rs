@@ -15,6 +15,7 @@ use soroban_sdk::{
 
 mod auth;
 mod budget;
+mod event_labels;
 mod events;
 pub mod helpers;
 mod resale;

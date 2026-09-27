@@ -80,4 +80,8 @@ pub enum Error {
     TierPriceNotSet = 35,
     /// The resale multiplier is below the 10_000 bps face-value floor.
     InvalidMultiplier = 36,
+    /// The supplied name or category is empty.
+    EmptyNameOrCategory = 37,
+    /// The supplied name, category, tier or seat exceeds its maximum length.
+    StringTooLong = 38,
 }

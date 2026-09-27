@@ -15,6 +15,12 @@ throughout the docs and examples — allows a 20% markup. A value below
 10,000 is rejected with `InvalidMultiplier`, because the resulting cap
 would sit below face value and no resale could ever clear it.
 
+**What are the byte limits on the name, category, tier and seat strings?**
+`name` up to 64 bytes, `category` up to 32 bytes, and both `tier` and
+`seat` up to 32 bytes. Empty labels are rejected with
+`EmptyNameOrCategory` and oversized ones with `StringTooLong`, bounding
+the per-ticket storage rent an organizer can incur.
+
 **What happens to a ticket if the organizer account is compromised?**
 Whoever controls the organizer's signing key can revoke or check in
 tickets for that event — the contract has no separate recovery path.

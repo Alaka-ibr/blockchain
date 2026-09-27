@@ -11,7 +11,8 @@ mod types;
 
 pub use constants::{
     BPS_DENOMINATOR, CATEGORY_CONCERT, CATEGORY_CONFERENCE, CATEGORY_FESTIVAL, CATEGORY_FLIGHT,
-    CATEGORY_OTHER, CATEGORY_SPORTS, MAX_BATCH_SIZE, PAYMENT_TOKEN_CHANGE_DELAY_LEDGERS,
+    CATEGORY_OTHER, CATEGORY_SPORTS, MAX_BATCH_SIZE, MAX_CATEGORY_LEN, MAX_NAME_LEN,
+    MAX_TICKET_LABEL_LEN, PAYMENT_TOKEN_CHANGE_DELAY_LEDGERS,
 };
 pub use error::Error;
 pub use events::{
@@ -78,6 +79,27 @@ impl TicketingContract {
         env.storage()
             .instance()
             .extend_ttl(LEDGER_THRESHOLD, LEDGER_BUMP);
+    }
+
+    /// Rejects a string that is empty or longer than `max_len` bytes.
+    ///
+    /// Shared by the event `name`/`category` (Issue #125) and the ticket
+    /// `tier`/`seat` (Issue #126) validators so every label has one rule.
+    fn validate_label(value: &String, max_len: u32) -> Result<(), Error> {
+        let len = value.len();
+        if len == 0 {
+            return Err(Error::EmptyNameOrCategory);
+        }
+        if len > max_len {
+            return Err(Error::StringTooLong);
+        }
+        Ok(())
+    }
+
+    /// Event metadata validation: non-empty, length-bounded name and category.
+    fn validate_event_labels(name: &String, category: &String) -> Result<(), Error> {
+        Self::validate_label(name, MAX_NAME_LEN)?;
+        Self::validate_label(category, MAX_CATEGORY_LEN)
     }
 
     /// Step one of a payment token change: the admin proposes a new token,
@@ -179,6 +201,8 @@ impl TicketingContract {
         if max_resale_multiplier_bps < BPS_DENOMINATOR {
             return Err(Error::InvalidMultiplier);
         }
+        // Issue #125: reject empty or oversized name/category.
+        Self::validate_event_labels(&name, &category)?;
         if starts_at <= env.ledger().timestamp() {
             return Err(Error::InvalidEventTime);
         }
@@ -245,6 +269,8 @@ impl TicketingContract {
         if max_resale_multiplier_bps < BPS_DENOMINATOR {
             return Err(Error::InvalidMultiplier);
         }
+        // Issue #125: reject empty or oversized name/category.
+        Self::validate_event_labels(&name, &category)?;
         if starts_at <= env.ledger().timestamp() {
             return Err(Error::InvalidEventTime);
         }
