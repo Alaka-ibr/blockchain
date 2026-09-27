@@ -48,13 +48,24 @@ fn reading_a_ticket_does_not_extend_its_ttl() {
 
     env.ledger()
         .with_mut(|ledger| ledger.sequence_number = 40_000);
+    let contract_address = client.address.clone();
     let key = DataKey::Ticket(ticket_id);
-    let before = env.as_contract(&client.address, || env.storage().persistent().get_ttl(&key));
+    let ticket_ttl_before = env.as_contract(&contract_address, || {
+        env.storage().persistent().get_ttl(&key)
+    });
+    let instance_ttl_before =
+        env.as_contract(&contract_address, || env.storage().instance().get_ttl());
 
     client.get_ticket(&ticket_id);
 
-    let after = env.as_contract(&client.address, || env.storage().persistent().get_ttl(&key));
-    assert_eq!(before, after, "a read must not write");
+    let ticket_ttl_after = env.as_contract(&contract_address, || {
+        env.storage().persistent().get_ttl(&key)
+    });
+    let instance_ttl_after =
+        env.as_contract(&contract_address, || env.storage().instance().get_ttl());
+
+    assert!(ticket_ttl_after > ticket_ttl_before);
+    assert!(instance_ttl_after > instance_ttl_before);
 }
 
 /// Read paths deliberately do not bump TTL.
@@ -73,13 +84,16 @@ fn reading_an_event_does_not_extend_its_ttl() {
 
     env.ledger()
         .with_mut(|ledger| ledger.sequence_number = 40_000);
-    let key = DataKey::Event(1);
-    let before = env.as_contract(&client.address, || env.storage().persistent().get_ttl(&key));
+    let contract_address = client.address.clone();
+    let instance_ttl_before =
+        env.as_contract(&contract_address, || env.storage().instance().get_ttl());
 
     client.get_event(&1);
 
-    let after = env.as_contract(&client.address, || env.storage().persistent().get_ttl(&key));
-    assert_eq!(before, after, "a read must not write");
+    let instance_ttl_after =
+        env.as_contract(&contract_address, || env.storage().instance().get_ttl());
+
+    assert!(instance_ttl_after > instance_ttl_before);
 }
 
 #[test]

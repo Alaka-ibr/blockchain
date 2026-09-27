@@ -374,7 +374,6 @@ impl TicketingContract {
     /// when one is set, otherwise the contract-wide payment token
     /// (issue #235).
     pub fn event_payment_token(env: Env, event_id: u64) -> Result<Address, Error> {
-        Self::extend_instance_ttl(&env);
         let event = Self::get_event_inner(&env, event_id)?;
         Self::payment_token_for_event(&env, &event)
     }
@@ -480,6 +479,9 @@ impl TicketingContract {
             if event.escrow_enabled {
                 token_client.transfer(&buyer, env.current_contract_address(), &price);
                 event.escrow_balance += price;
+                env.storage()
+                    .persistent()
+                    .set(&DataKey::Event(event_id), &event);
             } else {
                 token_client.transfer(&buyer, &event.organizer, &price);
             }
@@ -723,7 +725,7 @@ impl TicketingContract {
     /// entry. Missing tickets return `false` so scanners can use this as a
     /// single boolean check without handling a contract error.
     pub fn is_valid(env: Env, ticket_id: u64, owner: Address) -> bool {
-        match Self::get_ticket_inner(&env, ticket_id) {
+        match Self::get_ticket(env, ticket_id) {
             Ok(ticket) => ticket.owner == owner && ticket.status == TicketStatus::Valid,
             Err(_) => false,
         }
@@ -943,8 +945,7 @@ impl TicketingContract {
         if Self::resale_closed(&env, &event) {
             return Err(Error::ResaleClosed);
         }
-        let cap = ticket.original_price * event.max_resale_multiplier_bps as i128
-            / BPS_DENOMINATOR as i128;
+        let cap = ticket.original_price * event.max_resale_multiplier_bps as i128 / 10_000;
         if price > cap {
             return Err(Error::ResalePriceExceedsCap);
         }
@@ -1066,6 +1067,7 @@ impl TicketingContract {
     ///
     /// Returns `Error::EventNotFound` when no event with `event_id` exists.
     pub fn get_event(env: Env, event_id: u64) -> Result<Event, Error> {
+        Self::extend_instance_ttl(&env);
         Self::get_event_inner(&env, event_id)
     }
 
@@ -1075,6 +1077,7 @@ impl TicketingContract {
     ///
     /// Returns `Error::TicketNotFound` when no ticket with `ticket_id` exists.
     pub fn get_ticket(env: Env, ticket_id: u64) -> Result<Ticket, Error> {
+        Self::extend_instance_ttl(&env);
         Self::get_ticket_inner(&env, ticket_id)
     }
 
@@ -1103,6 +1106,12 @@ impl TicketingContract {
     }
 
     fn get_ticket_inner(env: &Env, ticket_id: u64) -> Result<Ticket, Error> {
+        let key = DataKey::Ticket(ticket_id);
+        let ticket = env
+            .storage()
+            .persistent()
+            .get(&key)
+            .ok_or(Error::TicketNotFound)?;
         env.storage()
             .persistent()
             .get(&DataKey::Ticket(ticket_id))
