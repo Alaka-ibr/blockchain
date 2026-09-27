@@ -6,7 +6,11 @@
 
 use super::*;
 
-fn listed_ticket(env: &Env, client: &TicketingContractClient, organizer: &Address) -> (Address, u64) {
+fn listed_ticket(
+    env: &Env,
+    client: &TicketingContractClient,
+    organizer: &Address,
+) -> (Address, u64) {
     make_event(env, client, organizer, 1);
     let seller = Address::generate(env);
     let ticket_id = client.issue_ticket(
