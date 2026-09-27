@@ -179,7 +179,7 @@ whether a backend should retry it — see
 **Prerequisites:**
 
 - [Rust](https://rustup.rs/) 1.70.0 or later (MSRV: 1.70.0, pinned via [`rust-toolchain.toml`](rust-toolchain.toml))
-- The `wasm32-unknown-unknown` target: `rustup target add wasm32-unknown-unknown`
+- The `wasm32v1-none` target: `rustup target add wasm32v1-none`
 - The [Stellar CLI](https://developers.stellar.org/docs/tools/developer-tools) (`stellar`)
 
 ```bash

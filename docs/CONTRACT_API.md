@@ -14,7 +14,8 @@ clients do not break. It may be removed only in a future breaking deployment.
 | `initialize(admin, payment_token)` | admin | One-time setup |
 | `create_event(organizer, event_id, name, category, max_resale_multiplier_bps, royalty_bps)` | organizer | Registers an event |
 | `issue_ticket(organizer, event_id, to, tier, seat, price)` | organizer | Mints a ticket (off-chain payment already settled) |
-| `purchase_primary(buyer, event_id, tier, seat, price)` | buyer | On-chain primary sale + mint |
+| `set_tier_price(organizer, event_id, tier, price)` | organizer | Sets the primary sale price for a tier (issue #127) |
+| `purchase_primary(buyer, event_id, tier, seat)` | buyer | On-chain primary sale at the tier price + mint |
 | `transfer_ticket(from, ticket_id, to)` | owner | Direct transfer |
 | `get_ticket(ticket_id)` | anyone | Canonical read-only ticket lookup |
 | `verify_ticket(ticket_id)` | anyone | Deprecated compatibility alias for `get_ticket` |

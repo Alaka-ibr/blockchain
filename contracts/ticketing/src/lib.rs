@@ -195,7 +195,7 @@ impl TicketingContract {
             escrow_balance: 0,
             payment_token: None,
         };
-        env.storage().persistent().set(&key, &event);
+        Self::save_event(&env, event_id, &event);
         env.storage()
             .persistent()
             .set(&DataKey::TicketsIssued(event_id), &0u64);
@@ -205,9 +205,6 @@ impl TicketingContract {
             LEDGER_BUMP,
         );
         Self::increment_organizer_events(&env, &event.organizer);
-        env.storage()
-            .persistent()
-            .extend_ttl(&key, LEDGER_THRESHOLD, LEDGER_BUMP);
         Ok(())
     }
 
@@ -256,7 +253,7 @@ impl TicketingContract {
             escrow_balance: 0,
             payment_token: None,
         };
-        env.storage().persistent().set(&key, &event);
+        Self::save_event(&env, event_id, &event);
         env.storage()
             .persistent()
             .set(&DataKey::TicketsIssued(event_id), &0u64);
@@ -266,9 +263,6 @@ impl TicketingContract {
             LEDGER_BUMP,
         );
         Self::increment_organizer_events(&env, &event.organizer);
-        env.storage()
-            .persistent()
-            .extend_ttl(&key, LEDGER_THRESHOLD, LEDGER_BUMP);
         Ok(())
     }
 
@@ -343,9 +337,7 @@ impl TicketingContract {
         }
         event.escrow_enabled = true;
         event.escrow_release_ledger = escrow_release_ledger;
-        env.storage()
-            .persistent()
-            .set(&DataKey::Event(event_id), &event);
+        Self::save_event(&env, event_id, &event);
         Ok(())
     }
 
@@ -374,9 +366,7 @@ impl TicketingContract {
             Self::ensure_token_contract(&env, token)?;
         }
         event.payment_token = token;
-        env.storage()
-            .persistent()
-            .set(&DataKey::Event(event_id), &event);
+        Self::save_event(&env, event_id, &event);
         Ok(())
     }
 
@@ -413,23 +403,77 @@ impl TicketingContract {
         Ok(ticket_id)
     }
 
-    /// Fully on-chain primary sale: buyer pays the organizer directly in
-    /// `payment_token`, then the ticket is minted to the buyer atomically.
+    /// Sets the organizer's primary sale price for one of an event's tiers
+    /// (issue #127). `purchase_primary` charges exactly this price, so the
+    /// buyer can no longer choose what to pay — underpaying (including
+    /// paying zero) is impossible. A price of 0 marks the tier as free.
+    ///
+    /// The organizer can change a tier price at any time; tickets already
+    /// sold keep the price they were bought at in `original_price`, which is
+    /// what resale caps and refunds are computed from.
+    pub fn set_tier_price(
+        env: Env,
+        organizer: Address,
+        event_id: u64,
+        tier: String,
+        price: i128,
+    ) -> Result<(), Error> {
+        Self::extend_instance_ttl(&env);
+        organizer.require_auth();
+        if price < 0 {
+            return Err(Error::InvalidPrice);
+        }
+        let event = Self::get_event_inner(&env, event_id)?;
+        if event.organizer != organizer {
+            return Err(Error::NotOrganizer);
+        }
+        let key = DataKey::TierPrice(event_id, tier);
+        env.storage().persistent().set(&key, &price);
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, LEDGER_THRESHOLD, LEDGER_BUMP);
+        Ok(())
+    }
+
+    /// Reads back the primary sale price configured for a tier (issue #127).
+    /// Returns `TierPriceNotSet` when the organizer has not priced the tier.
+    pub fn get_tier_price(env: Env, event_id: u64, tier: String) -> Result<i128, Error> {
+        Self::tier_price(&env, event_id, &tier)
+    }
+
+    /// Internal lookup of an event's tier price, also extending the entry's
+    /// TTL so a live sale never expires mid-transaction.
+    fn tier_price(env: &Env, event_id: u64, tier: &String) -> Result<i128, Error> {
+        let key = DataKey::TierPrice(event_id, tier.clone());
+        let price: i128 = env
+            .storage()
+            .persistent()
+            .get(&key)
+            .ok_or(Error::TierPriceNotSet)?;
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, LEDGER_THRESHOLD, LEDGER_BUMP);
+        Ok(price)
+    }
+
+    /// Buys a primary ticket at the event's tier price.
+    ///
+    /// The price is the organizer's configured `set_tier_price` value for the
+    /// tier — it is no longer supplied by the caller, so a buyer cannot
+    /// underpay a paid event (issue #127). Fails with `TierPriceNotSet` when
+    /// the organizer has not priced that tier.
     pub fn purchase_primary(
         env: Env,
         buyer: Address,
         event_id: u64,
         tier: String,
         seat: String,
-        price: i128,
     ) -> Result<u64, Error> {
         Self::extend_instance_ttl(&env);
         buyer.require_auth();
-        if price < 0 {
-            return Err(Error::InvalidPrice);
-        }
         Self::enforce_purchase_throttle(&env, &buyer)?;
         let mut event = Self::get_event_inner(&env, event_id)?;
+        let price = Self::tier_price(&env, event_id, &tier)?;
         let token_client = token::Client::new(&env, &Self::payment_token_for_event(&env, &event)?);
         if price > 0 {
             if event.escrow_enabled {
@@ -445,6 +489,13 @@ impl TicketingContract {
         let ticket_id = Self::mint(&env, event_id, buyer.clone(), tier, seat, price);
         Self::increment_tickets_issued(&env, event_id, 1);
         Self::record_purchase(&env, &buyer);
+        // `event` is a local copy, so the escrowed credit has to be written
+        // back explicitly. Without this the running total is discarded:
+        // `escrow_balance` stays at 0 in storage, `release_escrow` reads 0,
+        // and every escrowed sale is stranded in the contract forever.
+        if event.escrow_balance > 0 {
+            Self::save_event(&env, event_id, &event);
+        }
         Ok(ticket_id)
     }
 
@@ -467,9 +518,7 @@ impl TicketingContract {
         }
         let amount = event.escrow_balance;
         event.escrow_balance = 0;
-        env.storage()
-            .persistent()
-            .set(&DataKey::Event(event_id), &event);
+        Self::save_event(&env, event_id, &event);
         if amount > 0 {
             let token_client =
                 token::Client::new(&env, &Self::payment_token_for_event(&env, &event)?);
@@ -717,6 +766,12 @@ impl TicketingContract {
             _ => {}
         }
         ticket.status = TicketStatus::Used;
+        // A checked-in ticket can never be bought, so a listing left over from
+        // before the scan is dead state. Clear it the way every other path
+        // out of `Resale` does (`cancel_resale`, `buy_resale`, `transfer_*`,
+        // `claim_gift`) so `get_ticket` never reports a price for a ticket
+        // that cannot be purchased (issue #131).
+        ticket.resale_price = 0;
         Self::remove_gift_claim(&env, ticket_id);
         Self::save_ticket(&env, ticket_id, &ticket);
         TicketCheckedIn {
@@ -750,6 +805,8 @@ impl TicketingContract {
                 _ => {}
             }
             ticket.status = TicketStatus::Used;
+            // See `check_in`: clear the stale listing (issue #131).
+            ticket.resale_price = 0;
             Self::remove_gift_claim(&env, ticket_id);
             Self::save_ticket(&env, ticket_id, &ticket);
             TicketCheckedIn {
@@ -773,6 +830,10 @@ impl TicketingContract {
             return Err(Error::NotOrganizer);
         }
         ticket.status = TicketStatus::Revoked;
+        // A revoked ticket must not keep a live resale asking price (issue
+        // #129): `resale_price` is the marker a listing is read from, so
+        // leaving it non-zero kept listing data attached to a dead ticket.
+        ticket.resale_price = 0;
         Self::remove_gift_claim(&env, ticket_id);
         Self::save_ticket(&env, ticket_id, &ticket);
         Ok(())
@@ -923,9 +984,47 @@ impl TicketingContract {
         Ok(())
     }
 
-    /// Buys a resale-listed ticket. Payment is settled atomically on-chain:
-    /// the organizer's royalty cut is paid first, the remainder to the
-    /// seller, then ownership transfers to the buyer.
+    /// Buys a resale-listed ticket. Payment is settled on-chain: the
+    /// organizer's royalty cut and the seller's remainder both move out of
+    /// the buyer's token balance, and ownership transfers to the buyer.
+    ///
+    /// # Ordering (issue #133)
+    ///
+    /// This entry point pays out to two addresses the caller does not
+    /// control, by invoking the event's payment token twice. An event's
+    /// payment token is only checked for exposing `decimals`, so it is not
+    /// necessarily a Stellar asset contract: it is untrusted code running in
+    /// the middle of this function. The body is therefore ordered checks,
+    /// then effects, then interactions -- the ticket is fully updated and
+    /// persisted *before* the first `transfer`, so no external call ever
+    /// observes a half-settled purchase.
+    ///
+    /// This is defence in depth, not a fix for a live exploit, and it is
+    /// worth being accurate about which. The issue that prompted it proposed
+    /// a malicious payment token that re-enters `buy_resale` from inside
+    /// `transfer` and buys the same listing twice. That is not reachable on
+    /// Soroban: the host refuses to re-enter a contract that is already
+    /// executing, returning `Error(Context, InvalidAction)`, and it does so
+    /// for a plain `get_ticket` read as much as for a write. An attempted
+    /// test of the double purchase passes on the old ordering for exactly
+    /// that reason, which is why the ordering is justified by the invariant
+    /// below rather than by a regression test.
+    ///
+    /// The invariant is worth keeping regardless of the host's behaviour,
+    /// because the guarantee the host provides is narrow -- it is about
+    /// re-entering *this* contract, and says nothing about the state this
+    /// contract has committed or about what an observer of the ledger sees
+    /// between the two transfers. Under the previous ordering, the stored
+    /// ticket still read `Resale` with the seller as owner and a live
+    /// `resale_price` while the organizer had already been paid, and
+    /// `remove_gift_claim` was a state change made after the external calls.
+    /// The host would still stop a re-entrant call, but a contract that
+    /// depends on that is depending on a platform behaviour rather than on
+    /// its own ordering.
+    ///
+    /// The royalty and seller amounts are computed and captured before the
+    /// ticket is overwritten, because `seller` has to be the pre-sale owner
+    /// and `ticket.owner` is reassigned to the buyer above.
     pub fn buy_resale(env: Env, buyer: Address, ticket_id: u64) -> Result<(), Error> {
         Self::extend_instance_ttl(&env);
         buyer.require_auth();
@@ -938,21 +1037,27 @@ impl TicketingContract {
             return Err(Error::ResaleClosed);
         }
         Self::ensure_transfer_allowed(&ticket, &event)?;
-        let token_client = token::Client::new(&env, &Self::payment_token_for_event(&env, &event)?);
-        let royalty = ticket.resale_price * event.royalty_bps as i128 / 10_000;
+        let token_address = Self::payment_token_for_event(&env, &event)?;
+
+        // --- effects: settle state before any untrusted external call. ---
+        let royalty = ticket.resale_price * event.royalty_bps as i128 / BPS_DENOMINATOR as i128;
         let seller_amount = ticket.resale_price - royalty;
-        if royalty > 0 {
-            token_client.transfer(&buyer, &event.organizer, &royalty);
-        }
-        if seller_amount > 0 {
-            token_client.transfer(&buyer, &ticket.owner, &seller_amount);
-        }
-        ticket.owner = buyer;
+        let seller = ticket.owner.clone();
+        ticket.owner = buyer.clone();
         ticket.transfers += 1;
         ticket.status = TicketStatus::Valid;
         ticket.resale_price = 0;
         Self::remove_gift_claim(&env, ticket_id);
         Self::save_ticket(&env, ticket_id, &ticket);
+
+        // --- interactions: the only untrusted calls, after state is final.
+        let token_client = token::Client::new(&env, &token_address);
+        if royalty > 0 {
+            token_client.transfer(&buyer, &event.organizer, &royalty);
+        }
+        if seller_amount > 0 {
+            token_client.transfer(&buyer, &seller, &seller_amount);
+        }
         Ok(())
     }
 
@@ -1009,8 +1114,8 @@ impl TicketingContract {
             .ok_or(Error::TicketNotFound)?;
         env.storage()
             .persistent()
-            .extend_ttl(&key, LEDGER_THRESHOLD, LEDGER_BUMP);
-        Ok(ticket)
+            .get(&DataKey::Ticket(ticket_id))
+            .ok_or(Error::TicketNotFound)
     }
 
     fn increment_tickets_issued(env: &Env, event_id: u64, amount: u64) {
@@ -1030,6 +1135,21 @@ impl TicketingContract {
         env.storage()
             .persistent()
             .set(&key, &count.saturating_add(1));
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, LEDGER_THRESHOLD, LEDGER_BUMP);
+    }
+
+    /// Writes an event and refreshes its TTL in the same step.
+    ///
+    /// Every write to an `Event` must go through here. `storage().set` on its
+    /// own leaves the entry's `live_until_ledger` exactly where it was, so a
+    /// path that updates an event without extending it leaves the event --
+    /// and every ticket that can only be resolved through it -- sitting on
+    /// the expiry it happened to be created with (issue #139).
+    fn save_event(env: &Env, event_id: u64, event: &Event) {
+        let key = DataKey::Event(event_id);
+        env.storage().persistent().set(&key, event);
         env.storage()
             .persistent()
             .extend_ttl(&key, LEDGER_THRESHOLD, LEDGER_BUMP);
