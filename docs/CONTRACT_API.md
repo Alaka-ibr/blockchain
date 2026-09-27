@@ -4,6 +4,11 @@ Full signatures are in
 [`contracts/ticketing/src/lib.rs`](../contracts/ticketing/src/lib.rs);
 this is a quick-reference summary.
 
+`get_ticket` and the legacy `verify_ticket` implementation return the same
+`Ticket` record and error codes. `get_ticket` is the canonical Soroban naming
+convention; `verify_ticket` is deprecated but remains available so existing
+clients do not break. It may be removed only in a future breaking deployment.
+
 | Function | Caller | Effect |
 |---|---|---|
 | `initialize(admin, payment_token)` | admin | One-time setup |
@@ -11,7 +16,8 @@ this is a quick-reference summary.
 | `issue_ticket(organizer, event_id, to, tier, seat, price)` | organizer | Mints a ticket (off-chain payment already settled) |
 | `purchase_primary(buyer, event_id, tier, seat, price)` | buyer | On-chain primary sale + mint |
 | `transfer_ticket(from, ticket_id, to)` | owner | Direct transfer |
-| `verify_ticket(ticket_id)` | anyone | Read-only lookup |
+| `get_ticket(ticket_id)` | anyone | Canonical read-only ticket lookup |
+| `verify_ticket(ticket_id)` | anyone | Deprecated compatibility alias for `get_ticket` |
 | `check_in(organizer, ticket_id)` | organizer | Marks used, one-way |
 | `revoke_ticket(organizer, ticket_id)` | organizer | Permanently voids |
 | `revoke_with_refund(organizer, ticket_id, refund)` | organizer | Voids a ticket, optionally paying the original price back to the owner in the event's accepted payment token |

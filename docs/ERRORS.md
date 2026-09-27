@@ -11,6 +11,20 @@ contract.
 This page is the canonical error reference. Where another document shows
 a shorter list, this one wins.
 
+## Structured context and failure events
+
+Issue #159 was evaluated and intentionally does not add a failure event or
+replace `Error` with a `#[contracttype]` payload. The numeric
+`#[contracterror]` values are a stable wire ABI used by clients, so changing
+the return shape would be a breaking contract change. Soroban also rolls back
+a failed transaction, including events emitted by that transaction, so a
+failure event cannot be used as a durable audit log.
+
+Clients should decode the stable error code and attach the entry-point name,
+arguments, simulation result, and transaction/ledger metadata in off-chain
+logs. Durable on-chain diagnostics would require a separate authenticated
+diagnostic transaction.
+
 ## Full error table
 
 | Code | Variant | Meaning |
@@ -74,7 +88,7 @@ are reachable from a "not found" or a role check.
 |---|---|
 | 2 | every entry point that reads contract-wide configuration: `propose_payment_token`, `apply_payment_token`, `set_purchase_throttle`, `event_payment_token`, `purchase_primary`, `buy_resale`, `release_escrow`, `revoke_with_refund`, `token_decimals` |
 | 3 | every entry point that loads an existing event: `event_payment_token`, `allocate_lottery`, `enable_escrow`, `set_event_payment_token`, `issue_ticket`, `purchase_primary`, `release_escrow`, `transfer_ticket`, `transfer_batch`, `claim_gift`, `check_in`, `check_in_batch`, `revoke_ticket`, `set_seat`, `revoke_with_refund`, `revoke_batch`, `list_for_resale`, `buy_resale` |
-| 5 | every entry point that loads an existing ticket: `transfer_ticket`, `transfer_batch`, `create_gift_claim`, `claim_gift`, `verify_ticket`, `verify_tickets`, `check_in`, `check_in_batch`, `revoke_ticket`, `set_seat`, `revoke_with_refund`, `revoke_batch`, `list_for_resale`, `cancel_resale`, `buy_resale`, `get_ticket` |
+| 5 | every entry point that loads an existing ticket: `transfer_ticket`, `transfer_batch`, `create_gift_claim`, `claim_gift`, `get_ticket`, `verify_ticket` (deprecated alias), `verify_tickets`, `check_in`, `check_in_batch`, `revoke_ticket`, `set_seat`, `revoke_with_refund`, `revoke_batch`, `list_for_resale`, `cancel_resale`, `buy_resale` |
 | 6 | every organizer-authorized entry point |
 | 7 | every owner-authorized entry point |
 | 8 | `transfer_ticket`, `transfer_batch`, `create_gift_claim`, `claim_gift`, `check_in`, `check_in_batch`, `revoke_with_refund` |
@@ -99,7 +113,7 @@ are reachable from a "not found" or a role check.
 | `transfer_batch` | 3, 5, 7, 8, 9, 20, 27, 28, 33 |
 | `create_gift_claim` | 5, 7, 8, 9, 26 |
 | `claim_gift` | 3, 5, 7, 8, 9, 20, 23, 24, 25, 33 |
-| `verify_ticket` | 5 |
+| `get_ticket` / `verify_ticket` (deprecated) | 5 |
 | `verify_tickets` | 5, 27, 28 |
 | `check_in` | 3, 5, 6, 8, 9 |
 | `check_in_batch` | 3, 5, 6, 8, 9, 27, 28 |

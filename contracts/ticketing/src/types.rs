@@ -3,6 +3,29 @@
 
 use soroban_sdk::{contracttype, Address, BytesN, String};
 
+/// Optional common category labels for indexers and client applications.
+///
+/// `Event.category` intentionally remains a `String` so deployments can add
+/// industry-specific labels without a contract migration. Use `Other` when a
+/// value does not fit the common vocabulary.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum Category {
+    Concert,
+    Flight,
+    Sports,
+    Festival,
+    Conference,
+    Bus,
+    Cinema,
+    Museum,
+    TouristAttraction,
+    PublicTransport,
+    University,
+    Corporate,
+    Other,
+}
+
 /// Lifecycle status of a ticket.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]

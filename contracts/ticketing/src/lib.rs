@@ -9,13 +9,16 @@ mod error;
 mod events;
 mod types;
 
-pub use constants::{BPS_DENOMINATOR, MAX_BATCH_SIZE, PAYMENT_TOKEN_CHANGE_DELAY_LEDGERS};
+pub use constants::{
+    BPS_DENOMINATOR, CATEGORY_CONCERT, CATEGORY_CONFERENCE, CATEGORY_FESTIVAL, CATEGORY_FLIGHT,
+    CATEGORY_OTHER, CATEGORY_SPORTS, MAX_BATCH_SIZE, PAYMENT_TOKEN_CHANGE_DELAY_LEDGERS,
+};
 pub use error::Error;
 pub use events::{
     ContractInitialized, PaymentTokenChanged, PaymentTokenProposed, PurchaseThrottleUpdated,
     TicketCheckedIn, TicketIssued,
 };
-pub use types::{DataKey, Event, GiftClaim, PendingPaymentToken, Ticket, TicketStatus};
+pub use types::{Category, DataKey, Event, GiftClaim, PendingPaymentToken, Ticket, TicketStatus};
 
 use soroban_sdk::{contract, contractimpl, token, Address, Bytes, BytesN, Env, String, Vec};
 
@@ -636,11 +639,14 @@ impl TicketingContract {
         Ok(())
     }
 
-    /// Read-only on-chain verification — the core fraud-prevention primitive.
-    /// Any scanner/app can call this without authentication to confirm a
-    /// ticket's current owner and status before admitting entry.
+    /// Read-only compatibility alias for [`Self::get_ticket`].
+    ///
+    /// `get_ticket` is the canonical Soroban-style name for this lookup.
+    /// Keep this entry point for clients deployed against earlier interfaces;
+    /// new integrations should call `get_ticket`.
+    #[deprecated(note = "use get_ticket; verify_ticket is retained for ABI compatibility")]
     pub fn verify_ticket(env: Env, ticket_id: u64) -> Result<Ticket, Error> {
-        Self::get_ticket_inner(&env, ticket_id)
+        Self::get_ticket(env, ticket_id)
     }
 
     /// Returns whether a ticket exists, belongs to `owner`, and is valid for

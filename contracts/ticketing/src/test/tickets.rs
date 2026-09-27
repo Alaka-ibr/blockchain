@@ -1,6 +1,13 @@
 use super::*;
 
 #[test]
+fn category_vocabulary_has_other_and_standard_labels() {
+    assert!(matches!(Category::Other, Category::Other));
+    assert_eq!(CATEGORY_CONCERT, "concert");
+    assert_eq!(CATEGORY_OTHER, "other");
+}
+
+#[test]
 fn issues_and_verifies_ticket() {
     let (env, client, _token, _token_asset, _admin, organizer) = setup();
     make_event(&env, &client, &organizer, 1);
@@ -15,7 +22,7 @@ fn issues_and_verifies_ticket() {
         &5_000i128,
     );
 
-    let ticket = client.verify_ticket(&ticket_id);
+    let ticket = client.get_ticket(&ticket_id);
     assert_eq!(ticket.owner, buyer);
     assert_eq!(ticket.status, TicketStatus::Valid);
     assert_eq!(ticket.original_price, 5_000);
@@ -27,7 +34,7 @@ fn issues_and_verifies_ticket() {
 #[test]
 fn get_ticket_reports_not_found_for_an_unknown_id() {
     let (env, client, _token, _token_asset, _admin, _organizer) = setup();
-    let result = client.try_verify_ticket(&999);
+    let result = client.try_get_ticket(&999);
     assert_eq!(result, Err(Ok(Error::TicketNotFound)));
 }
 
@@ -83,7 +90,7 @@ fn issue_ticket_allows_a_zero_price_comp_ticket() {
         &String::from_str(&env, "A1"),
         &0i128,
     );
-    let ticket = client.verify_ticket(&ticket_id);
+    let ticket = client.get_ticket(&ticket_id);
     assert_eq!(ticket.original_price, 0);
     assert_eq!(ticket.owner, comp_recipient);
 }
@@ -123,7 +130,7 @@ fn purchase_primary_pays_organizer_on_chain() {
     assert_eq!(token.balance(&organizer), 2_000);
     assert_eq!(token.balance(&buyer), 8_000);
 
-    let ticket = client.verify_ticket(&ticket_id);
+    let ticket = client.get_ticket(&ticket_id);
     assert_eq!(ticket.owner, buyer);
     assert_eq!(ticket.original_price, 2_000);
 }
@@ -158,7 +165,7 @@ fn purchase_primary_allows_a_free_event() {
         &String::from_str(&env, "GA"),
         &0i128,
     );
-    assert_eq!(client.verify_ticket(&ticket_id).original_price, 0);
+    assert_eq!(client.get_ticket(&ticket_id).original_price, 0);
 }
 
 #[test]
@@ -177,7 +184,7 @@ fn transfer_moves_ownership() {
     );
 
     client.transfer_ticket(&buyer, &ticket_id, &friend);
-    let ticket = client.verify_ticket(&ticket_id);
+    let ticket = client.get_ticket(&ticket_id);
     assert_eq!(ticket.owner, friend);
 
     let stale = client.try_transfer_ticket(&buyer, &ticket_id, &organizer);
@@ -201,7 +208,7 @@ fn seat_and_tier_survive_a_transfer() {
     );
 
     client.transfer_ticket(&buyer, &ticket_id, &friend);
-    let ticket = client.verify_ticket(&ticket_id);
+    let ticket = client.get_ticket(&ticket_id);
     assert_eq!(ticket.tier, String::from_str(&env, "VIP"));
     assert_eq!(ticket.seat, String::from_str(&env, "Row A Seat 1"));
 }
@@ -224,7 +231,7 @@ fn direct_transfer_freezes_at_configured_window() {
 
     env.ledger().set_timestamp(9_899);
     client.transfer_ticket(&buyer, &ticket_id, &friend);
-    assert_eq!(client.verify_ticket(&ticket_id).owner, friend);
+    assert_eq!(client.get_ticket(&ticket_id).owner, friend);
 
     env.ledger().set_timestamp(9_900);
     let frozen = client.try_transfer_ticket(&friend, &ticket_id, &buyer);
@@ -260,8 +267,8 @@ fn transfer_batch_moves_all_tickets_atomically() {
     batch.push_back(t2);
 
     client.transfer_batch(&buyer, &batch, &friend);
-    assert_eq!(client.verify_ticket(&t1).owner, friend);
-    assert_eq!(client.verify_ticket(&t2).owner, friend);
+    assert_eq!(client.get_ticket(&t1).owner, friend);
+    assert_eq!(client.get_ticket(&t2).owner, friend);
 }
 
 #[test]
@@ -298,7 +305,7 @@ fn gift_claim_transfers_ticket_with_correct_secret() {
     client.create_gift_claim(&owner, &ticket_id, &secret_hash, &5_000u64);
     client.claim_gift(&recipient, &ticket_id, &secret_bytes);
 
-    let ticket = client.verify_ticket(&ticket_id);
+    let ticket = client.get_ticket(&ticket_id);
     assert_eq!(ticket.owner, recipient);
     assert_eq!(ticket.status, TicketStatus::Valid);
 }
@@ -348,7 +355,7 @@ fn check_in_marks_used_and_rejects_reentry() {
     );
 
     client.check_in(&organizer, &ticket_id);
-    let ticket = client.verify_ticket(&ticket_id);
+    let ticket = client.get_ticket(&ticket_id);
     assert_eq!(ticket.status, TicketStatus::Used);
 
     let result = client.try_check_in(&organizer, &ticket_id);
@@ -400,8 +407,8 @@ fn check_in_batch_marks_all_tickets_used() {
     batch.push_back(t2);
 
     client.check_in_batch(&organizer, &batch);
-    assert_eq!(client.verify_ticket(&t1).status, TicketStatus::Used);
-    assert_eq!(client.verify_ticket(&t2).status, TicketStatus::Used);
+    assert_eq!(client.get_ticket(&t1).status, TicketStatus::Used);
+    assert_eq!(client.get_ticket(&t2).status, TicketStatus::Used);
 }
 
 #[test]
@@ -421,19 +428,19 @@ fn check_in_after_transfer_succeeds_for_new_owner() {
         &5_000i128,
     );
 
-    let ticket_before = client.verify_ticket(&ticket_id);
+    let ticket_before = client.get_ticket(&ticket_id);
     assert_eq!(ticket_before.owner, original_buyer);
     assert_eq!(ticket_before.status, TicketStatus::Valid);
 
     client.transfer_ticket(&original_buyer, &ticket_id, &new_owner);
 
-    let ticket_transferred = client.verify_ticket(&ticket_id);
+    let ticket_transferred = client.get_ticket(&ticket_id);
     assert_eq!(ticket_transferred.owner, new_owner);
     assert_eq!(ticket_transferred.status, TicketStatus::Valid);
 
     client.check_in(&organizer, &ticket_id);
 
-    let ticket_checked_in = client.verify_ticket(&ticket_id);
+    let ticket_checked_in = client.get_ticket(&ticket_id);
     assert_eq!(ticket_checked_in.owner, new_owner);
     assert_eq!(ticket_checked_in.status, TicketStatus::Used);
 
@@ -528,10 +535,7 @@ fn revoke_with_refund_returns_payment_to_owner() {
     client.revoke_with_refund(&organizer, &ticket_id, &true);
 
     assert_eq!(token.balance(&buyer), 10_000);
-    assert_eq!(
-        client.verify_ticket(&ticket_id).status,
-        TicketStatus::Revoked
-    );
+    assert_eq!(client.get_ticket(&ticket_id).status, TicketStatus::Revoked);
 }
 
 #[test]
@@ -561,8 +565,8 @@ fn revoke_batch_revokes_all_tickets() {
     batch.push_back(t2);
 
     client.revoke_batch(&organizer, &batch);
-    assert_eq!(client.verify_ticket(&t1).status, TicketStatus::Revoked);
-    assert_eq!(client.verify_ticket(&t2).status, TicketStatus::Revoked);
+    assert_eq!(client.get_ticket(&t1).status, TicketStatus::Revoked);
+    assert_eq!(client.get_ticket(&t2).status, TicketStatus::Revoked);
 }
 
 #[test]
