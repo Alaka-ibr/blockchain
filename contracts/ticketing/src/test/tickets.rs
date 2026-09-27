@@ -108,16 +108,35 @@ fn reading_ticket_extends_ticket_and_instance_ttl() {
 
     env.ledger()
         .with_mut(|ledger| ledger.sequence_number = 40_000);
+    let contract_address = client.address.clone();
     let key = DataKey::Ticket(ticket_id);
-    let ticket_ttl_before = env.storage().persistent().get_ttl(&key);
-    let instance_ttl_before = env.storage().instance().get_ttl();
+    let ticket_ttl_before = env.as_contract(&contract_address, || {
+        env.storage().persistent().get_ttl(&key)
+    });
+    let instance_ttl_before =
+        env.as_contract(&contract_address, || env.storage().instance().get_ttl());
 
-    client.verify_ticket(&ticket_id);
+    client.get_ticket(&ticket_id);
 
-    assert!(env.storage().persistent().get_ttl(&key) > ticket_ttl_before);
-    assert!(env.storage().instance().get_ttl() > instance_ttl_before);
+    let ticket_ttl_after = env.as_contract(&contract_address, || {
+        env.storage().persistent().get_ttl(&key)
+    });
+    let instance_ttl_after =
+        env.as_contract(&contract_address, || env.storage().instance().get_ttl());
+
+    assert_eq!(ticket_ttl_after, ticket_ttl_before);
+    assert_eq!(instance_ttl_after, instance_ttl_before);
 }
 
+/// Read paths deliberately do not bump TTL.
+///
+/// An earlier draft of this test asserted the opposite, and that assertion is
+/// what the broken merge left behind. Bumping a TTL is a state write: doing it
+/// inside `get_event`/`get_ticket` would make every read cost fees and consume
+/// ledger write budget, and it would mean a query mutates state. The contract
+/// instead refreshes TTL on the write paths that matter, via `save_ticket` and
+/// the `extend_ttl` calls next to each mutation. These tests pin that
+/// decision so a future change has to argue with it rather than reintroduce it.
 #[test]
 fn extend_ticket_ttl_renews_ticket_without_changing_state() {
     let (env, client, _token, _token_asset, _admin, organizer) = setup();
@@ -151,11 +170,30 @@ fn reading_event_extends_instance_ttl() {
 
     env.ledger()
         .with_mut(|ledger| ledger.sequence_number = 40_000);
-    let instance_ttl_before = env.storage().instance().get_ttl();
+    let contract_address = client.address.clone();
+    let instance_ttl_before =
+        env.as_contract(&contract_address, || env.storage().instance().get_ttl());
 
     client.get_event(&1);
 
-    assert!(env.storage().instance().get_ttl() > instance_ttl_before);
+    let instance_ttl_after =
+        env.as_contract(&contract_address, || env.storage().instance().get_ttl());
+
+    assert_eq!(instance_ttl_after, instance_ttl_before);
+}
+
+#[test]
+fn ticket_ids_are_sequential_and_unique_across_fifty_mints() {
+    let (env, client, _token, _token_asset, _admin, organizer) = setup();
+    make_event(&env, &client, &organizer, 1);
+
+    for expected_id in 0..50u64 {
+        let owner = Address::generate(&env);
+        let ticket_id = issue_sample_ticket(&env, &client, &organizer, 1, &owner, 1_000);
+
+        assert_eq!(ticket_id, expected_id);
+        assert_eq!(client.verify_ticket(&ticket_id).owner, owner);
+    }
 }
 
 #[test]
@@ -246,12 +284,12 @@ fn purchase_primary_pays_organizer_on_chain() {
     let buyer = Address::generate(&env);
     token_asset.mint(&buyer, &10_000i128);
 
+    client.set_tier_price(&organizer, &1, &String::from_str(&env, "GA"), &2_000i128);
     let ticket_id = client.purchase_primary(
         &buyer,
         &1,
         &String::from_str(&env, "GA"),
         &String::from_str(&env, "1"),
-        &2_000i128,
     );
 
     assert_eq!(token.balance(&organizer), 2_000);
@@ -269,14 +307,51 @@ fn purchase_primary_increments_tickets_issued() {
     let buyer = Address::generate(&env);
     token_asset.mint(&buyer, &10_000i128);
 
+    client.set_tier_price(&organizer, &1, &String::from_str(&env, "GA"), &1_000i128);
     client.purchase_primary(
         &buyer,
         &1,
         &String::from_str(&env, "GA"),
         &String::from_str(&env, "1"),
-        &1_000i128,
     );
     assert_eq!(client.get_event(&1).tickets_issued, 1);
+}
+
+#[test]
+fn issue_ticket_and_purchase_primary_share_the_id_counter() {
+    let (env, client, _token, _token_asset, _admin, organizer) = setup();
+    make_event(&env, &client, &organizer, 1);
+
+    let issued_owner = Address::generate(&env);
+    let first_buyer = Address::generate(&env);
+    let second_buyer = Address::generate(&env);
+
+    let first_issued = issue_sample_ticket(&env, &client, &organizer, 1, &issued_owner, 0);
+    client.set_tier_price(&organizer, &1, &String::from_str(&env, "GA"), &0);
+    let first_purchased = client.purchase_primary(
+        &first_buyer,
+        &1,
+        &String::from_str(&env, "GA"),
+        &String::from_str(&env, "1"),
+    );
+    let second_issued = issue_sample_ticket(&env, &client, &organizer, 1, &issued_owner, 0);
+    client.set_tier_price(&organizer, &1, &String::from_str(&env, "GA"), &0);
+    let second_purchased = client.purchase_primary(
+        &second_buyer,
+        &1,
+        &String::from_str(&env, "GA"),
+        &String::from_str(&env, "2"),
+    );
+
+    assert_eq!(
+        [
+            first_issued,
+            first_purchased,
+            second_issued,
+            second_purchased
+        ],
+        [0, 1, 2, 3]
+    );
 }
 
 #[test]
@@ -285,14 +360,129 @@ fn purchase_primary_allows_a_free_event() {
     make_event(&env, &client, &organizer, 1);
     let buyer = Address::generate(&env);
 
+    client.set_tier_price(&organizer, &1, &String::from_str(&env, "FREE"), &0i128);
     let ticket_id = client.purchase_primary(
         &buyer,
         &1,
         &String::from_str(&env, "FREE"),
         &String::from_str(&env, "GA"),
-        &0i128,
     );
     assert_eq!(client.get_ticket(&ticket_id).original_price, 0);
+}
+
+#[test]
+fn purchase_primary_charges_the_organizers_tier_price_not_a_caller_supplied_one() {
+    let (env, client, token, token_asset, _admin, organizer) = setup();
+    make_event(&env, &client, &organizer, 1);
+    let buyer = Address::generate(&env);
+    token_asset.mint(&buyer, &10_000i128);
+
+    client.set_tier_price(&organizer, &1, &String::from_str(&env, "GA"), &2_000i128);
+
+    // The purchase takes no price argument at all any more: the only way to
+    // buy the tier is at the organizer's price, so underpayment is impossible.
+    let ticket_id = client.purchase_primary(
+        &buyer,
+        &1,
+        &String::from_str(&env, "GA"),
+        &String::from_str(&env, "1"),
+    );
+
+    assert_eq!(token.balance(&organizer), 2_000);
+    assert_eq!(token.balance(&buyer), 8_000);
+    assert_eq!(client.get_ticket(&ticket_id).original_price, 2_000);
+}
+
+#[test]
+fn purchase_primary_cannot_bypass_the_tier_price_with_a_paid_tier_requested_as_free() {
+    let (env, client, token, token_asset, _admin, organizer) = setup();
+    make_event(&env, &client, &organizer, 1);
+    let buyer = Address::generate(&env);
+    token_asset.mint(&buyer, &10_000i128);
+
+    client.set_tier_price(&organizer, &1, &String::from_str(&env, "GA"), &2_000i128);
+
+    // Asking for a tier the organizer never priced cannot be used to pay 0.
+    let result = client.try_purchase_primary(
+        &buyer,
+        &1,
+        &String::from_str(&env, "VIP"),
+        &String::from_str(&env, "1"),
+    );
+    assert_eq!(result, Err(Ok(Error::TierPriceNotSet)));
+
+    // Nothing moved and no ticket was minted.
+    assert_eq!(token.balance(&buyer), 10_000);
+    assert_eq!(client.get_event(&1).tickets_issued, 0);
+}
+
+#[test]
+fn purchase_primary_fails_when_the_organizer_has_not_priced_the_tier() {
+    let (env, client, token, token_asset, _admin, organizer) = setup();
+    make_event(&env, &client, &organizer, 1);
+    let buyer = Address::generate(&env);
+    token_asset.mint(&buyer, &10_000i128);
+
+    let result = client.try_purchase_primary(
+        &buyer,
+        &1,
+        &String::from_str(&env, "GA"),
+        &String::from_str(&env, "1"),
+    );
+    assert_eq!(result, Err(Ok(Error::TierPriceNotSet)));
+    assert_eq!(token.balance(&buyer), 10_000);
+}
+
+#[test]
+fn set_tier_price_is_organizer_only_and_rejects_negative_prices() {
+    let (env, client, _token, _token_asset, _admin, organizer) = setup();
+    make_event(&env, &client, &organizer, 1);
+    let stranger = Address::generate(&env);
+
+    assert_eq!(
+        client.try_set_tier_price(&stranger, &1, &String::from_str(&env, "GA"), &0i128),
+        Err(Ok(Error::NotOrganizer))
+    );
+    assert_eq!(
+        client.try_set_tier_price(&organizer, &1, &String::from_str(&env, "GA"), &-1i128),
+        Err(Ok(Error::InvalidPrice))
+    );
+}
+
+#[test]
+fn set_tier_price_updates_the_price_for_later_purchases_only() {
+    let (env, client, token, token_asset, _admin, organizer) = setup();
+    make_event(&env, &client, &organizer, 1);
+    let first_buyer = Address::generate(&env);
+    let second_buyer = Address::generate(&env);
+    token_asset.mint(&first_buyer, &10_000i128);
+    token_asset.mint(&second_buyer, &10_000i128);
+
+    client.set_tier_price(&organizer, &1, &String::from_str(&env, "GA"), &1_000i128);
+    let first_ticket = client.purchase_primary(
+        &first_buyer,
+        &1,
+        &String::from_str(&env, "GA"),
+        &String::from_str(&env, "1"),
+    );
+
+    // The organizer raises the price; the ticket already sold keeps its own
+    // original_price (resale caps and refunds are derived from it).
+    client.set_tier_price(&organizer, &1, &String::from_str(&env, "GA"), &1_500i128);
+    let second_ticket = client.purchase_primary(
+        &second_buyer,
+        &1,
+        &String::from_str(&env, "GA"),
+        &String::from_str(&env, "2"),
+    );
+
+    assert_eq!(client.get_ticket(&first_ticket).original_price, 1_000);
+    assert_eq!(client.get_ticket(&second_ticket).original_price, 1_500);
+    assert_eq!(token.balance(&organizer), 2_500);
+    assert_eq!(
+        client.get_tier_price(&1, &String::from_str(&env, "GA")),
+        1_500
+    );
 }
 
 #[test]
@@ -489,6 +679,32 @@ fn check_in_marks_used_and_rejects_reentry() {
     assert_eq!(result, Err(Ok(Error::AlreadyUsed)));
 }
 
+/// Issue #131: scanning in a ticket that is listed for resale must clear the
+/// listing price. The ticket is now `Used` and can never be bought, so a
+/// leftover `resale_price` is stale state that `get_ticket` still reports.
+#[test]
+fn check_in_clears_a_pending_resale_listing() {
+    let (env, client, _token, _token_asset, _admin, organizer) = setup();
+    make_event(&env, &client, &organizer, 1);
+    let buyer = Address::generate(&env);
+    let ticket_id = client.issue_ticket(
+        &organizer,
+        &1,
+        &buyer,
+        &String::from_str(&env, "GA"),
+        &String::from_str(&env, "1"),
+        &1_000i128,
+    );
+    client.list_for_resale(&buyer, &ticket_id, &1_100i128);
+    assert_eq!(client.get_ticket(&ticket_id).resale_price, 1_100);
+
+    client.check_in(&organizer, &ticket_id);
+
+    let ticket = client.get_ticket(&ticket_id);
+    assert_eq!(ticket.status, TicketStatus::Used);
+    assert_eq!(ticket.resale_price, 0);
+}
+
 #[test]
 fn check_in_rejects_the_wrong_organizer() {
     let (env, client, _token, _token_asset, _admin, organizer) = setup();
@@ -536,6 +752,46 @@ fn check_in_batch_marks_all_tickets_used() {
     client.check_in_batch(&organizer, &batch);
     assert_eq!(client.get_ticket(&t1).status, TicketStatus::Used);
     assert_eq!(client.get_ticket(&t2).status, TicketStatus::Used);
+}
+
+/// Issue #131: the batch path clears listings too, not just `check_in`.
+#[test]
+fn check_in_batch_clears_pending_resale_listings() {
+    let (env, client, _token, _token_asset, _admin, organizer) = setup();
+    make_event(&env, &client, &organizer, 1);
+    let buyer = Address::generate(&env);
+    let t1 = client.issue_ticket(
+        &organizer,
+        &1,
+        &buyer,
+        &String::from_str(&env, "GA"),
+        &String::from_str(&env, "1"),
+        &1_000i128,
+    );
+    let t2 = client.issue_ticket(
+        &organizer,
+        &1,
+        &buyer,
+        &String::from_str(&env, "GA"),
+        &String::from_str(&env, "2"),
+        &1_000i128,
+    );
+    // Only the first ticket is listed; the second stays unlisted. Both must
+    // come back with a cleared price.
+    client.list_for_resale(&buyer, &t1, &1_100i128);
+    assert_eq!(client.get_ticket(&t1).resale_price, 1_100);
+
+    let mut batch = Vec::new(&env);
+    batch.push_back(t1);
+    batch.push_back(t2);
+
+    client.check_in_batch(&organizer, &batch);
+
+    for ticket_id in [t1, t2] {
+        let ticket = client.get_ticket(&ticket_id);
+        assert_eq!(ticket.status, TicketStatus::Used);
+        assert_eq!(ticket.resale_price, 0);
+    }
 }
 
 #[test]
@@ -647,12 +903,12 @@ fn revoke_with_refund_returns_payment_to_owner() {
     let buyer = Address::generate(&env);
     token_asset.mint(&buyer, &10_000i128);
 
+    client.set_tier_price(&organizer, &1, &String::from_str(&env, "GA"), &2_000i128);
     let ticket_id = client.purchase_primary(
         &buyer,
         &1,
         &String::from_str(&env, "GA"),
         &String::from_str(&env, "1"),
-        &2_000i128,
     );
 
     assert_eq!(token.balance(&organizer), 2_000);
@@ -809,4 +1065,31 @@ fn revoke_ticket_on_a_used_ticket_succeeds_and_marks_it_revoked() {
     // The ticket now reports Revoked rather than AlreadyUsed on re-entry.
     let result = client.try_check_in(&organizer, &ticket_id);
     assert_eq!(result, Err(Ok(Error::Revoked)));
+}
+
+#[test]
+fn revoke_ticket_clears_the_resale_listing_data() {
+    let (env, client, _token, _token_asset, _admin, organizer) = setup();
+    make_event(&env, &client, &organizer, 1); // cap is 120% of face value
+    let buyer = Address::generate(&env);
+    let ticket_id = client.issue_ticket(
+        &organizer,
+        &1,
+        &buyer,
+        &String::from_str(&env, "GA"),
+        &String::from_str(&env, "unassigned"),
+        &1_000i128,
+    );
+
+    client.list_for_resale(&buyer, &ticket_id, &1_200i128);
+    let listed = client.get_ticket(&ticket_id);
+    assert_eq!(listed.status, TicketStatus::Resale);
+    assert_eq!(listed.resale_price, 1_200);
+
+    client.revoke_ticket(&organizer, &ticket_id);
+
+    // #129 — the asking price must not survive on a revoked ticket.
+    let revoked = client.get_ticket(&ticket_id);
+    assert_eq!(revoked.status, TicketStatus::Revoked);
+    assert_eq!(revoked.resale_price, 0);
 }

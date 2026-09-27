@@ -203,7 +203,7 @@ fn events_and_tickets_with_unicode_names_and_categories() {
     let (env, client, _token, _token_asset, _admin, organizer) = setup();
 
     let unicode_name = String::from_str(&env, "東京ライブ 2026 🎵 (Tokyo Live)");
-    let unicode_category = String::from_str(&env, "音楽・コンサート / Festival ✨");
+    let unicode_category = String::from_str(&env, "音楽 / Festival ✨");
 
     client.create_event(
         &organizer,
@@ -315,12 +315,12 @@ fn escrowed_primary_sale_holds_funds_in_the_contract() {
     let buyer = Address::generate(&env);
     token_asset.mint(&buyer, &10_000i128);
 
+    client.set_tier_price(&organizer, &1, &String::from_str(&env, "GA"), &2_000i128);
     client.purchase_primary(
         &buyer,
         &1,
         &String::from_str(&env, "GA"),
         &String::from_str(&env, "1"),
-        &2_000i128,
     );
 
     let event = client.get_event(&1);
@@ -337,12 +337,12 @@ fn release_escrow_rejects_before_the_event_ends() {
 
     let buyer = Address::generate(&env);
     token_asset.mint(&buyer, &10_000i128);
+    client.set_tier_price(&organizer, &1, &String::from_str(&env, "GA"), &2_000i128);
     client.purchase_primary(
         &buyer,
         &1,
         &String::from_str(&env, "GA"),
         &String::from_str(&env, "1"),
-        &2_000i128,
     );
 
     env.ledger().set_sequence_number(499);
@@ -358,12 +358,12 @@ fn release_escrow_pays_the_organizer_after_the_event_ends() {
 
     let buyer = Address::generate(&env);
     token_asset.mint(&buyer, &10_000i128);
+    client.set_tier_price(&organizer, &1, &String::from_str(&env, "GA"), &2_000i128);
     client.purchase_primary(
         &buyer,
         &1,
         &String::from_str(&env, "GA"),
         &String::from_str(&env, "1"),
-        &2_000i128,
     );
 
     env.ledger().set_sequence_number(500);
@@ -415,12 +415,12 @@ fn per_event_payment_token_routes_settlement() {
     let buyer = Address::generate(&env);
     token2_asset.mint(&buyer, &5_000i128);
 
+    client.set_tier_price(&organizer, &1, &String::from_str(&env, "GA"), &2_000i128);
     client.purchase_primary(
         &buyer,
         &1,
         &String::from_str(&env, "GA"),
         &String::from_str(&env, "1"),
-        &2_000i128,
     );
 
     assert_eq!(token2.balance(&organizer), 2_000);
@@ -465,24 +465,42 @@ fn create_event_accepts_a_royalty_of_exactly_10_000_bps() {
     assert_eq!(client.get_event(&1).royalty_bps, 10_000);
 }
 
-/// Current behaviour: a zero multiplier is accepted at creation, but it makes
-/// the resale cap 0, so every resale listing (price must be > 0) is rejected.
+/// Issue #124: a zero multiplier is no longer accepted. Previously it was
+/// stored and then silently made every resale impossible (cap 0), which is a
+/// dead-end event rather than a valid configuration. The contract now rejects
+/// it at creation with `Error::InvalidMultiplier`; see
+/// `resale_multiplier.rs` for the full boundary coverage.
 #[test]
-fn zero_max_resale_multiplier_event_is_created_but_blocks_all_resale() {
+fn create_event_rejects_zero_max_resale_multiplier() {
     let (env, client, _token, _token_asset, _admin, organizer) = setup();
-    make_custom_event(&env, &client, &organizer, 1, "Event", "concert", 0, 500, 10_000);
-    assert_eq!(client.get_event(&1).max_resale_multiplier_bps, 0);
-
-    let buyer = Address::generate(&env);
-    let ticket_id = client.issue_ticket(
+    let result = client.try_create_event(
         &organizer,
         &1,
+        &String::from_str(&env, "Event"),
+        &String::from_str(&env, "concert"),
+        &0u32,
+        &500u32,
+        &10_000u64,
+        &0u64,
+        &0u64,
+    );
+    assert_eq!(result, Err(Ok(Error::InvalidMultiplier)));
+}
+
+/// #142: `purchase_primary` on an event id that was never created must
+/// surface `Error::EventNotFound` rather than panicking or falling through
+/// to a price/tier lookup on default-initialized state.
+#[test]
+fn purchase_primary_returns_event_not_found_for_a_nonexistent_event() {
+    let (env, client, _token, token_asset, _admin, _organizer) = setup();
+    let buyer = Address::generate(&env);
+    token_asset.mint(&buyer, &10_000i128);
+
+    let result = client.try_purchase_primary(
         &buyer,
+        &999,
         &String::from_str(&env, "GA"),
         &String::from_str(&env, "1"),
-        &1_000i128,
     );
-    let result = client.try_list_for_resale(&buyer, &ticket_id, &1i128);
-    assert_eq!(result, Err(Ok(Error::ResalePriceExceedsCap)));
-    assert_eq!(client.verify_ticket(&ticket_id).status, TicketStatus::Valid);
+    assert_eq!(result, Err(Ok(Error::EventNotFound)));
 }

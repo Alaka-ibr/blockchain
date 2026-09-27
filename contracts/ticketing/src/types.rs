@@ -177,6 +177,11 @@ pub enum DataKey {
     /// Number of tickets issued for an event. Kept separate from `Event` so
     /// minting does not rewrite the complete event record.
     TicketsIssued(u64),
+    /// Primary sale price for one of an event's tiers, keyed by event id and
+    /// tier name (issue #127). Stored alongside the event record rather than
+    /// inside it so changing a tier price never rewrites the whole `Event`
+    /// struct, which also keeps already-stored event records readable.
+    TierPrice(u64, String),
     /// Number of events registered by an organizer.
     OrganizerEvents(Address),
     /// Ledger sequence of a buyer's most recent primary purchase.

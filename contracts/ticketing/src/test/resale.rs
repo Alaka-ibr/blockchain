@@ -61,6 +61,35 @@ fn list_for_resale_rejects_a_zero_price() {
     assert_eq!(result, Err(Ok(Error::InvalidPrice)));
 }
 
+/// #143: `list_for_resale` matches on `ticket.status` before touching the
+/// resale cap/floor, and `Used` is one of the two branches (with `Revoked`)
+/// that must reject rather than fall through to `_ => {}`. Checked in via
+/// `check_in` so the ticket reaches `Used` the same way it does in practice,
+/// rather than by writing the status directly.
+#[test]
+fn list_for_resale_rejects_a_used_ticket() {
+    let (env, client, _token, _token_asset, _admin, organizer) = setup();
+    make_event(&env, &client, &organizer, 1);
+    let owner = Address::generate(&env);
+    let ticket_id = client.issue_ticket(
+        &organizer,
+        &1,
+        &owner,
+        &String::from_str(&env, "GA"),
+        &String::from_str(&env, "1"),
+        &1_000i128,
+    );
+    client.check_in(&organizer, &ticket_id);
+    assert_eq!(client.get_ticket(&ticket_id).status, TicketStatus::Used);
+
+    let result = client.try_list_for_resale(&owner, &ticket_id, &1_100i128);
+    assert_eq!(result, Err(Ok(Error::AlreadyUsed)));
+    // Rejected before any resale state was written.
+    let ticket = client.get_ticket(&ticket_id);
+    assert_eq!(ticket.status, TicketStatus::Used);
+    assert_eq!(ticket.resale_price, 0);
+}
+
 #[test]
 fn list_for_resale_rejects_a_non_owner() {
     let (env, client, _token, _token_asset, _admin, organizer) = setup();
@@ -149,6 +178,27 @@ fn buy_resale_splits_royalty_and_transfers_ownership() {
 }
 
 #[test]
+fn buy_resale_does_not_increment_tickets_issued() {
+    let (env, client, _token, token_asset, _admin, organizer) = setup();
+    make_event(&env, &client, &organizer, 1);
+
+    let seller = Address::generate(&env);
+    let buyer = Address::generate(&env);
+    let ticket_id = issue_sample_ticket(&env, &client, &organizer, 1, &seller, 1_000);
+    let tickets_issued_before_resale = client.get_event(&1).tickets_issued;
+
+    client.list_for_resale(&seller, &ticket_id, &1_100);
+    token_asset.mint(&buyer, &1_100);
+    client.buy_resale(&buyer, &ticket_id);
+
+    assert_eq!(tickets_issued_before_resale, 1);
+    assert_eq!(
+        client.get_event(&1).tickets_issued,
+        tickets_issued_before_resale
+    );
+}
+
+#[test]
 fn buy_resale_with_zero_royalty_pays_the_seller_in_full() {
     let (env, client, token, token_asset, _admin, organizer) = setup();
     client.create_event(
@@ -182,6 +232,134 @@ fn buy_resale_with_zero_royalty_pays_the_seller_in_full() {
     assert_eq!(token.balance(&buyer), 10_000 - 1_100);
 }
 
+/// Issue #141: a buyer who cannot cover the full price must not buy the
+/// listing, and must not move any money.
+///
+/// `buy_resale` has no balance precheck of its own -- it settles by calling
+/// `token::transfer` for the royalty and then for the seller's share -- so
+/// affordability is enforced by the asset contract failing the second
+/// transfer. That makes settlement a two-step external interaction, and the
+/// case worth testing is the partial one: a buyer funded for the royalty but
+/// not the price completes the first transfer and fails on the second. If the
+/// invocation were not atomic, the organizer would keep a royalty for a
+/// purchase that never completed.
+///
+/// Note on the error: this asserts only that the call fails, not *which* error
+/// it reports. An asset-contract failure surfaces as `Error(Contract, #10)`,
+/// which the generated client decodes as this contract's own `Error` -- and
+/// #10 is `NotForResale`. So an underfunded buyer is currently told the ticket
+/// is not for sale, which is a misleading diagnosis for a client to show a
+/// user. Pinning that code here would cement it, so this test only pins the
+/// invariants that matter; a dedicated error for insufficient funds can be
+/// added later without breaking it.
+#[test]
+fn buy_resale_rejects_a_buyer_who_cannot_afford_the_full_price() {
+    let (env, client, token, token_asset, _admin, organizer) = setup();
+    make_event(&env, &client, &organizer, 1); // 5% royalty
+    let seller = Address::generate(&env);
+    let buyer = Address::generate(&env);
+
+    let ticket_id = client.issue_ticket(
+        &organizer,
+        &1,
+        &seller,
+        &String::from_str(&env, "GA"),
+        &String::from_str(&env, "unassigned"),
+        &1_000i128,
+    );
+    client.list_for_resale(&seller, &ticket_id, &1_100i128);
+
+    // 5% of 1_100 is 55: enough for the royalty transfer, far short of 1_100.
+    token_asset.mint(&buyer, &55i128);
+
+    assert!(client.try_buy_resale(&buyer, &ticket_id).is_err());
+
+    // The royalty transfer was rolled back rather than left dangling.
+    assert_eq!(token.balance(&organizer), 0);
+    assert_eq!(token.balance(&seller), 0);
+    assert_eq!(token.balance(&buyer), 55);
+
+    // The listing survives the failed attempt, unchanged and still buyable.
+    let ticket = client.get_ticket(&ticket_id);
+    assert_eq!(ticket.owner, seller);
+    assert_eq!(ticket.status, TicketStatus::Resale);
+    assert_eq!(ticket.resale_price, 1_100);
+    assert_eq!(ticket.transfers, 0);
+
+    // A funded buyer can still complete the very same purchase.
+    token_asset.mint(&buyer, &1_100i128);
+    client.buy_resale(&buyer, &ticket_id);
+    assert_eq!(client.get_ticket(&ticket_id).owner, buyer);
+    assert_eq!(token.balance(&organizer), 55);
+    assert_eq!(token.balance(&seller), 1_045);
+    assert_eq!(token.balance(&buyer), 55);
+}
+
+/// Issue #141: the shortfall boundary is the full price, not the royalty, so a
+/// buyer who is one unit short must be turned away rather than paying a
+/// partial amount.
+#[test]
+fn buy_resale_rejects_a_buyer_who_is_one_unit_short() {
+    let (env, client, token, token_asset, _admin, organizer) = setup();
+    make_event(&env, &client, &organizer, 1);
+    let seller = Address::generate(&env);
+    let buyer = Address::generate(&env);
+
+    let ticket_id = client.issue_ticket(
+        &organizer,
+        &1,
+        &seller,
+        &String::from_str(&env, "GA"),
+        &String::from_str(&env, "unassigned"),
+        &1_000i128,
+    );
+    client.list_for_resale(&seller, &ticket_id, &1_100i128);
+
+    token_asset.mint(&buyer, &1_099i128);
+    assert!(client.try_buy_resale(&buyer, &ticket_id).is_err());
+    assert_eq!(token.balance(&seller), 0);
+    assert_eq!(token.balance(&organizer), 0);
+    assert_eq!(token.balance(&buyer), 1_099);
+    assert_eq!(client.get_ticket(&ticket_id).status, TicketStatus::Resale);
+
+    // Exactly the asking price is accepted.
+    token_asset.mint(&buyer, &1_100i128);
+    client.buy_resale(&buyer, &ticket_id);
+    assert_eq!(client.get_ticket(&ticket_id).owner, buyer);
+    assert_eq!(client.get_ticket(&ticket_id).status, TicketStatus::Valid);
+}
+
+/// Issue #141: a buyer with an empty wallet must be turned away too, with the
+/// listing left intact.
+#[test]
+fn buy_resale_rejects_a_buyer_with_no_balance() {
+    let (env, client, token, token_asset, _admin, organizer) = setup();
+    make_event(&env, &client, &organizer, 1);
+    let seller = Address::generate(&env);
+    let buyer = Address::generate(&env);
+
+    let ticket_id = client.issue_ticket(
+        &organizer,
+        &1,
+        &seller,
+        &String::from_str(&env, "GA"),
+        &String::from_str(&env, "unassigned"),
+        &1_000i128,
+    );
+    client.list_for_resale(&seller, &ticket_id, &1_100i128);
+
+    assert!(client.try_buy_resale(&buyer, &ticket_id).is_err());
+
+    assert_eq!(token.balance(&organizer), 0);
+    assert_eq!(token.balance(&seller), 0);
+
+    let ticket = client.get_ticket(&ticket_id);
+    assert_eq!(ticket.owner, seller);
+    assert_eq!(ticket.status, TicketStatus::Resale);
+    assert_eq!(ticket.resale_price, 1_100);
+    assert_eq!(ticket.transfers, 0);
+}
+
 #[test]
 fn buy_resale_rejects_a_ticket_that_is_not_listed() {
     let (env, client, _token, token_asset, _admin, organizer) = setup();
@@ -201,6 +379,13 @@ fn buy_resale_rejects_a_ticket_that_is_not_listed() {
     assert_eq!(result, Err(Ok(Error::NotForResale)));
 }
 
+/// #144: `transfer_ticket`'s status match only rejects `Used`/`Revoked`, so a
+/// `Resale`-listed ticket falls through to the happy path — direct transfer
+/// (gift, family member) must still work on a listed ticket, and must clear
+/// the listing rather than leave a stale resale price on the new owner's
+/// ticket. Explicit before/after assertions on every field the transfer
+/// touches, so a change that clears the price but forgets `transfers`, or
+/// vice versa, fails this test.
 #[test]
 fn transferring_a_resale_listed_ticket_clears_the_listing_state() {
     let (env, client, _token, _token_asset, _admin, organizer) = setup();
@@ -216,12 +401,18 @@ fn transferring_a_resale_listed_ticket_clears_the_listing_state() {
         &1_000i128,
     );
     client.list_for_resale(&seller, &ticket_id, &1_100i128);
+    let listed = client.get_ticket(&ticket_id);
+    assert_eq!(listed.status, TicketStatus::Resale);
+    assert_eq!(listed.resale_price, 1_100);
+    assert_eq!(listed.transfers, 0);
+
     client.transfer_ticket(&seller, &ticket_id, &friend);
 
     let ticket = client.get_ticket(&ticket_id);
     assert_eq!(ticket.status, TicketStatus::Valid);
     assert_eq!(ticket.resale_price, 0);
     assert_eq!(ticket.owner, friend);
+    assert_eq!(ticket.transfers, 1);
 }
 
 #[test]

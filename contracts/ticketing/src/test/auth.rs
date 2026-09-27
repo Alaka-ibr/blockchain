@@ -32,7 +32,6 @@ impl MaliciousReentrantToken {
                 &1u64,
                 &String::from_str(&env, "GA"),
                 &String::from_str(&env, "reentrant"),
-                &amount,
             );
         }
     }
@@ -40,6 +39,57 @@ impl MaliciousReentrantToken {
     pub fn set_target(env: Env, target: Address) {
         env.storage().instance().set(&DataKey::Admin, &target);
     }
+}
+
+/// #145: `initialize` calls `admin.require_auth()` before writing any state,
+/// but nothing in the suite called it without `mock_all_auths()` blanket
+/// approval, so a regression that dropped the `require_auth()` call (or
+/// moved it after the first storage write) would not fail any existing test.
+/// Uses a fresh, un-initialized contract — `setup()` already calls
+/// `initialize` under the blanket mock — and mocks auth for a stranger
+/// address instead of the admin being initialized, matching the pattern
+/// `check_in_requires_the_organizers_auth` uses for the same class of gap.
+#[test]
+fn initialize_requires_admin_auth() {
+    let env = Env::default();
+    let admin = Address::generate(&env);
+    let payment_token = env
+        .register_stellar_asset_contract_v2(Address::generate(&env))
+        .address();
+    let contract_id = env.register(TicketingContract, ());
+    let client = TicketingContractClient::new(&env, &contract_id);
+
+    let stranger = Address::generate(&env);
+    env.mock_auths(&[MockAuth {
+        address: &stranger,
+        invoke: &MockAuthInvoke {
+            contract: &client.address,
+            fn_name: "initialize",
+            args: (&admin, &payment_token).into_val(&env),
+            sub_invokes: &[],
+        },
+    }]);
+    let result = client.try_initialize(&admin, &payment_token);
+    // A host auth failure, not a contract Error — and nothing was written.
+    assert!(matches!(result, Err(Err(_))));
+    assert!(!env.as_contract(&contract_id, || {
+        env.storage().instance().has(&DataKey::Admin)
+    }));
+
+    // With the admin's own auth the same call succeeds.
+    env.mock_auths(&[MockAuth {
+        address: &admin,
+        invoke: &MockAuthInvoke {
+            contract: &client.address,
+            fn_name: "initialize",
+            args: (&admin, &payment_token).into_val(&env),
+            sub_invokes: &[],
+        },
+    }]);
+    client.initialize(&admin, &payment_token);
+    let auths = env.auths();
+    assert_eq!(auths.len(), 1);
+    assert_eq!(auths[0].0, admin);
 }
 
 #[test]
@@ -86,22 +136,22 @@ fn purchase_throttle_rejects_rapid_repeat_purchases() {
     token_asset.mint(&buyer, &10_000i128);
 
     env.ledger().set_sequence_number(100);
+    client.set_tier_price(&organizer, &1, &String::from_str(&env, "GA"), &1_000i128);
     client.purchase_primary(
         &buyer,
         &1,
         &String::from_str(&env, "GA"),
         &String::from_str(&env, "1"),
-        &1_000i128,
     );
 
     // Second purchase in the same block (or within 10 ledgers) must be throttled
     env.ledger().set_sequence_number(105);
+    client.set_tier_price(&organizer, &1, &String::from_str(&env, "GA"), &1_000i128);
     let throttled = client.try_purchase_primary(
         &buyer,
         &1,
         &String::from_str(&env, "GA"),
         &String::from_str(&env, "2"),
-        &1_000i128,
     );
     assert_eq!(throttled, Err(Ok(Error::PurchaseTooSoon)));
 }
@@ -116,21 +166,21 @@ fn purchase_throttle_allows_purchase_after_spacing_elapses() {
     token_asset.mint(&buyer, &10_000i128);
 
     env.ledger().set_sequence_number(100);
+    client.set_tier_price(&organizer, &1, &String::from_str(&env, "GA"), &1_000i128);
     client.purchase_primary(
         &buyer,
         &1,
         &String::from_str(&env, "GA"),
         &String::from_str(&env, "1"),
-        &1_000i128,
     );
 
     env.ledger().set_sequence_number(111);
+    client.set_tier_price(&organizer, &1, &String::from_str(&env, "GA"), &1_000i128);
     let ok = client.try_purchase_primary(
         &buyer,
         &1,
         &String::from_str(&env, "GA"),
         &String::from_str(&env, "2"),
-        &1_000i128,
     );
     assert!(ok.is_ok());
 }
@@ -153,12 +203,12 @@ fn purchase_primary_leaves_no_partial_state_when_token_transfer_fails() {
     let buyer = Address::generate(&env);
     let event_before = client.get_event(&1);
 
+    client.set_tier_price(&organizer, &1, &String::from_str(&env, "GA"), &1_000i128);
     let result = client.try_purchase_primary(
         &buyer,
         &1,
         &String::from_str(&env, "GA"),
         &String::from_str(&env, "1"),
-        &1_000i128,
     );
     assert!(
         result.is_err(),
@@ -190,12 +240,12 @@ fn malicious_token_reentrancy_fails_safely_and_preserves_state() {
     let buyer = Address::generate(&env);
     let event_before = client.get_event(&1);
 
+    client.set_tier_price(&organizer, &1, &String::from_str(&env, "GA"), &1_000i128);
     let _ = client.try_purchase_primary(
         &buyer,
         &1,
         &String::from_str(&env, "GA"),
         &String::from_str(&env, "1"),
-        &1_000i128,
     );
 
     // Contract state remains consistent and tickets_issued accurately reflects final state
