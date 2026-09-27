@@ -35,6 +35,22 @@ pub fn setup<'a>() -> (
     (env, client, token, token_asset, admin, organizer)
 }
 
+pub fn setup_uninitialized<'a>() -> (Env, TicketingContractClient<'a>, Address, Address, Address) {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let organizer = Address::generate(&env);
+
+    let token_admin = Address::generate(&env);
+    let token_contract = env.register_stellar_asset_contract_v2(token_admin);
+
+    let contract_id = env.register(TicketingContract, ());
+    let client = TicketingContractClient::new(&env, &contract_id);
+
+    (env, client, token_contract.address(), admin, organizer)
+}
+
 pub fn make_event(env: &Env, client: &TicketingContractClient, organizer: &Address, event_id: u64) {
     client.create_event(
         organizer,

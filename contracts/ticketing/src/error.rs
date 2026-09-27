@@ -76,4 +76,6 @@ pub enum Error {
     TransferLimitExceeded = 33,
     /// The resale price is below the event's configured resale floor.
     ResalePriceBelowFloor = 34,
+    /// A stored ticket lifecycle word contains an unknown status code.
+    InvalidTicketLifecycle = 35,
 }

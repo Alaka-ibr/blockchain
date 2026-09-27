@@ -108,6 +108,30 @@ pub struct Ticket {
     pub transfers: u32,
 }
 
+/// Compact persistent representation for a ticket.
+///
+/// The public `Ticket` ABI stays unchanged for clients, while storage packs
+/// status and transfer count into one lifecycle word to reduce the persistent
+/// footprint of every ticket record.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct StoredTicket {
+    /// Id of the event this ticket admits entry to.
+    pub event_id: u64,
+    /// Current owner of the ticket.
+    pub owner: Address,
+    /// Ticket tier name, e.g. "VIP" or "GA".
+    pub tier: String,
+    /// Assigned seat, or "unassigned" for general admission.
+    pub seat: String,
+    /// Packed lifecycle state: low byte is `TicketStatus`, high bits are transfers.
+    pub lifecycle: u64,
+    /// Price paid at primary sale; used for resale caps and refunds.
+    pub original_price: i128,
+    /// Asking price while the ticket is listed for resale; 0 otherwise.
+    pub resale_price: i128,
+}
+
 /// A pending gift-claim link for a ticket.
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]

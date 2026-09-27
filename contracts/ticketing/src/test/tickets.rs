@@ -33,6 +33,66 @@ fn issues_and_verifies_ticket() {
 }
 
 #[test]
+fn public_calls_report_not_initialized_before_setup() {
+    let (env, client, token, _admin, organizer) = setup_uninitialized();
+    let buyer = Address::generate(&env);
+
+    let create_event = client.try_create_event(
+        &organizer,
+        &1,
+        &String::from_str(&env, "Uninitialized"),
+        &String::from_str(&env, "concert"),
+        &12_000u32,
+        &500u32,
+        &10_000u64,
+        &100u64,
+        &200u64,
+    );
+    assert_eq!(create_event, Err(Ok(Error::NotInitialized)));
+
+    let issue_ticket = client.try_issue_ticket(
+        &organizer,
+        &1,
+        &buyer,
+        &String::from_str(&env, "GA"),
+        &String::from_str(&env, "A1"),
+        &1_000i128,
+    );
+    assert_eq!(issue_ticket, Err(Ok(Error::NotInitialized)));
+
+    assert_eq!(client.try_get_event(&1), Err(Ok(Error::NotInitialized)));
+    assert_eq!(client.try_get_ticket(&1), Err(Ok(Error::NotInitialized)));
+    assert_eq!(client.try_token_decimals(), Err(Ok(Error::NotInitialized)));
+
+    client.initialize(&Address::generate(&env), &token);
+    assert_eq!(client.try_get_ticket(&1), Err(Ok(Error::TicketNotFound)));
+}
+
+#[test]
+fn tickets_are_stored_in_the_packed_representation() {
+    let (env, client, _token, _token_asset, _admin, organizer) = setup();
+    make_event(&env, &client, &organizer, 1);
+    let owner = Address::generate(&env);
+    let ticket_id = client.issue_ticket(
+        &organizer,
+        &1,
+        &owner,
+        &String::from_str(&env, "GA"),
+        &String::from_str(&env, "A1"),
+        &1_000i128,
+    );
+
+    let key = DataKey::Ticket(ticket_id);
+    let stored: StoredTicket = env.storage().persistent().get(&key).unwrap();
+    assert_eq!(stored.lifecycle, 0);
+
+    let ticket = client.get_ticket(&ticket_id);
+    assert_eq!(ticket.owner, owner);
+    assert_eq!(ticket.status, TicketStatus::Valid);
+    assert_eq!(ticket.transfers, 0);
+}
+
+#[test]
 fn reading_ticket_extends_ticket_and_instance_ttl() {
     let (env, client, _token, _token_asset, _admin, organizer) = setup();
     make_event(&env, &client, &organizer, 1);
@@ -56,6 +116,32 @@ fn reading_ticket_extends_ticket_and_instance_ttl() {
 
     assert!(env.storage().persistent().get_ttl(&key) > ticket_ttl_before);
     assert!(env.storage().instance().get_ttl() > instance_ttl_before);
+}
+
+#[test]
+fn extend_ticket_ttl_renews_ticket_without_changing_state() {
+    let (env, client, _token, _token_asset, _admin, organizer) = setup();
+    make_event(&env, &client, &organizer, 1);
+    let owner = Address::generate(&env);
+    let ticket_id = client.issue_ticket(
+        &organizer,
+        &1,
+        &owner,
+        &String::from_str(&env, "GA"),
+        &String::from_str(&env, "A1"),
+        &1_000i128,
+    );
+
+    env.ledger()
+        .with_mut(|ledger| ledger.sequence_number = 40_000);
+    let key = DataKey::Ticket(ticket_id);
+    let ticket_ttl_before = env.storage().persistent().get_ttl(&key);
+    let ticket_before = client.get_ticket(&ticket_id);
+
+    client.extend_ticket_ttl(&ticket_id);
+
+    assert!(env.storage().persistent().get_ttl(&key) > ticket_ttl_before);
+    assert_eq!(client.get_ticket(&ticket_id), ticket_before);
 }
 
 #[test]
@@ -576,14 +662,10 @@ fn revoke_with_refund_returns_payment_to_owner() {
     client.revoke_with_refund(&organizer, &ticket_id, &true);
 
     assert_eq!(token.balance(&buyer), 10_000);
- fix/storage-ttl-snapshots
     assert_eq!(
         client.verify_ticket(&ticket_id).status,
         TicketStatus::Revoked
     );
-
-    assert_eq!(client.get_ticket(&ticket_id).status, TicketStatus::Revoked);
- main
 }
 
 #[test]
@@ -719,7 +801,10 @@ fn revoke_ticket_on_a_used_ticket_succeeds_and_marks_it_revoked() {
     assert_eq!(client.verify_ticket(&ticket_id).status, TicketStatus::Used);
 
     client.revoke_ticket(&organizer, &ticket_id);
-    assert_eq!(client.verify_ticket(&ticket_id).status, TicketStatus::Revoked);
+    assert_eq!(
+        client.verify_ticket(&ticket_id).status,
+        TicketStatus::Revoked
+    );
 
     // The ticket now reports Revoked rather than AlreadyUsed on re-entry.
     let result = client.try_check_in(&organizer, &ticket_id);
