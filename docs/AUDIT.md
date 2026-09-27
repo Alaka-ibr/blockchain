@@ -25,7 +25,7 @@ The audit covers the core ticketing contract logic in [`contracts/ticketing/src/
 **Prerequisites:**
 
 - Rust 1.70.0 or later (MSRV pinned in [`rust-toolchain.toml`](../rust-toolchain.toml))
-- `wasm32-unknown-unknown` target: `rustup target add wasm32-unknown-unknown`
+- `wasm32v1-none` target: `rustup target add wasm32v1-none`
 - The [Stellar CLI](https://developers.stellar.org/docs/tools/developer-tools)
 
 **Building the contract:**
