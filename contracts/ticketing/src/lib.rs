@@ -1179,10 +1179,7 @@ impl TicketingContract {
             .persistent()
             .get(&key)
             .ok_or(Error::TicketNotFound)?;
-        env.storage()
-            .persistent()
-            .get(&DataKey::Ticket(ticket_id))
-            .ok_or(Error::TicketNotFound)
+        Ok(ticket)
     }
 
     fn increment_tickets_issued(env: &Env, event_id: u64, amount: u64) {
