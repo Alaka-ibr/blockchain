@@ -50,6 +50,28 @@
     ],
     [
       [
+        "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+        {
+          "function": {
+            "contract_fn": {
+              "contract_address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAK3IM",
+              "function_name": "approve_organizer",
+              "args": [
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM"
+                },
+                {
+                  "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                }
+              ]
+            }
+          },
+          "sub_invocations": []
+        }
+      ]
+    ],
+    [
+      [
         "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
         {
           "function": {
@@ -67,7 +89,7 @@
                   "string": "\\xe6\\x9d\\xb1\\xe4\\xba\\xac\\xe3\\x83\\xa9\\xe3\\x82\\xa4\\xe3\\x83\\x96 2026 \\xf0\\x9f\\x8e\\xb5 (Tokyo Live)"
                 },
                 {
-                  "string": "\\xe9\\x9f\\xb3\\xe6\\xa5\\xbd\\xe3\\x83\\xbb\\xe3\\x82\\xb3\\xe3\\x83\\xb3\\xe3\\x82\\xb5\\xe3\\x83\\xbc\\xe3\\x83\\x88 / Festival \\xe2\\x9c\\xa8"
+                  "string": "\\xe9\\x9f\\xb3\\xe6\\xa5\\xbd / Festival \\xe2\\x9c\\xa8"
                 },
                 {
                   "u32": 12000
@@ -188,6 +210,26 @@
               "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
               "key": {
                 "ledger_key_nonce": {
+                  "nonce": "1033654523790656264"
+                }
+              },
+              "durability": "temporary",
+              "val": "void"
+            }
+          },
+          "ext": "v0"
+        },
+        "live_until": 6311999
+      },
+      {
+        "entry": {
+          "last_modified_ledger_seq": 0,
+          "data": {
+            "contract_data": {
+              "ext": "v0",
+              "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
+              "key": {
+                "ledger_key_nonce": {
                   "nonce": "5541220902715666415"
                 }
               },
@@ -208,7 +250,7 @@
               "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
               "key": {
                 "ledger_key_nonce": {
-                  "nonce": "1033654523790656264"
+                  "nonce": "2032731177588607455"
                 }
               },
               "durability": "temporary",
@@ -249,6 +291,33 @@
               "key": {
                 "vec": [
                   {
+                    "symbol": "ApprovedOrganizer"
+                  },
+                  {
+                    "address": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4"
+                  }
+                ]
+              },
+              "durability": "persistent",
+              "val": {
+                "bool": true
+              }
+            }
+          },
+          "ext": "v0"
+        },
+        "live_until": 535679
+      },
+      {
+        "entry": {
+          "last_modified_ledger_seq": 0,
+          "data": {
+            "contract_data": {
+              "ext": "v0",
+              "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAK3IM",
+              "key": {
+                "vec": [
+                  {
                     "symbol": "Event"
                   },
                   {
@@ -264,7 +333,7 @@
                       "symbol": "category"
                     },
                     "val": {
-                      "string": "\\xe9\\x9f\\xb3\\xe6\\xa5\\xbd\\xe3\\x83\\xbb\\xe3\\x82\\xb3\\xe3\\x83\\xb3\\xe3\\x82\\xb5\\xe3\\x83\\xbc\\xe3\\x83\\x88 / Festival \\xe2\\x9c\\xa8"
+                      "string": "\\xe9\\x9f\\xb3\\xe6\\xa5\\xbd / Festival \\xe2\\x9c\\xa8"
                     }
                   },
                   {

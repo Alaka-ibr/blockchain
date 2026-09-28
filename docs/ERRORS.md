@@ -69,6 +69,7 @@ diagnostic transaction.
 | 38 | `StringTooLong` | The supplied `name` (> `MAX_NAME_LEN`), `category` (> `MAX_CATEGORY_LEN`) or `tier`/`seat` (> `MAX_TICKET_LABEL_LEN`) exceeds its byte budget |
 | 39 | `SelfTransfer` | `transfer_ticket` was called with `from == to` |
 | 40 | `SelfPurchase` | `buy_resale` was called by the ticket's current `owner` (the seller buying their own listing) |
+| 41 | `OrganizerNotApproved` | `create_event` / `create_event_with_options` was called by an organizer the admin has not added with `approve_organizer` (see [ORGANIZER_ALLOWLIST.md](ORGANIZER_ALLOWLIST.md)) |
 
 ### Grouping
 
@@ -76,7 +77,7 @@ diagnostic transaction.
 |---|---|---|
 | Initialization & ordering | 1, 2, 4, 18, 30, 31, 32 | Initialization, idempotency and sequencing constraints — rejected without touching ticket state |
 | Lookup | 3, 5 | The referenced record does not exist in persistent storage |
-| Authorization | 6, 7, 17 | The signer is authenticated but lacks the required role for the record |
+| Authorization | 6, 7, 17, 41 | The signer is authenticated but lacks the required role for the record |
 | Ticket state machine | 8, 9, 10, 33, 39, 40 | The ticket's `status` or transfer counter forbids the action, or the transfer/purchase is a no-op on the current owner |
 | Policy, pricing & timing | 11, 12, 13, 19, 20, 21, 22, 34, 35, 36 | Organizer-configured or time-based policy rejects the arguments |
 | Gift claims | 23, 24, 25, 26 | The claim link is missing, expired, or the preimage does not match |
