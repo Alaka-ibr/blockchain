@@ -851,6 +851,14 @@ impl TicketingContract {
     /// Marks a ticket as used at the point of entry. Only the event's
     /// organizer (or their delegated gate device, via a shared Soroban
     /// signer) may check a ticket in, and only once.
+    ///
+    /// Tickets listed for resale (`TicketStatus::Resale`) cannot be checked in
+    /// until the owner cancels the listing (`cancel_resale`) or completes the sale
+    /// (issue #132).
+    ///
+    /// # Errors
+    ///
+    /// Returns `Error::ResaleListingActive` if the ticket is currently listed for resale.
     pub fn check_in(env: Env, organizer: Address, ticket_id: u64) -> Result<(), Error> {
         Self::extend_instance_ttl(&env);
         organizer.require_auth();
@@ -862,14 +870,10 @@ impl TicketingContract {
         match ticket.status {
             TicketStatus::Used => return Err(Error::AlreadyUsed),
             TicketStatus::Revoked => return Err(Error::Revoked),
+            TicketStatus::Resale => return Err(Error::ResaleListingActive),
             _ => {}
         }
         ticket.status = TicketStatus::Used;
-        // A checked-in ticket can never be bought, so a listing left over from
-        // before the scan is dead state. Clear it the way every other path
-        // out of `Resale` does (`cancel_resale`, `buy_resale`, `transfer_*`,
-        // `claim_gift`) so `get_ticket` never reports a price for a ticket
-        // that cannot be purchased (issue #131).
         ticket.resale_price = 0;
         Self::remove_gift_claim(&env, ticket_id);
         Self::save_ticket(&env, ticket_id, &ticket);
@@ -883,6 +887,12 @@ impl TicketingContract {
 
     /// Marks a batch of tickets as used at the point of entry for group admission.
     /// Only the event's organizer may check tickets in, bounded by `MAX_BATCH_SIZE`.
+    ///
+    /// Tickets listed for resale (`TicketStatus::Resale`) are rejected (issue #132).
+    ///
+    /// # Errors
+    ///
+    /// Returns `Error::ResaleListingActive` if any ticket in the batch is currently listed for resale.
     pub fn check_in_batch(env: Env, organizer: Address, ticket_ids: Vec<u64>) -> Result<(), Error> {
         Self::extend_instance_ttl(&env);
         organizer.require_auth();
@@ -901,10 +911,10 @@ impl TicketingContract {
             match ticket.status {
                 TicketStatus::Used => return Err(Error::AlreadyUsed),
                 TicketStatus::Revoked => return Err(Error::Revoked),
+                TicketStatus::Resale => return Err(Error::ResaleListingActive),
                 _ => {}
             }
             ticket.status = TicketStatus::Used;
-            // See `check_in`: clear the stale listing (issue #131).
             ticket.resale_price = 0;
             Self::remove_gift_claim(&env, ticket_id);
             Self::save_ticket(&env, ticket_id, &ticket);

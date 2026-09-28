@@ -624,11 +624,10 @@ fn check_in_marks_used_and_rejects_reentry() {
     assert_eq!(result, Err(Ok(Error::AlreadyUsed)));
 }
 
-/// Issue #131: scanning in a ticket that is listed for resale must clear the
-/// listing price. The ticket is now `Used` and can never be bought, so a
-/// leftover `resale_price` is stale state that `get_ticket` still reports.
+/// Issue #132: Attempting to check in a ticket that is currently listed for resale
+/// must be rejected with Error::ResaleListingActive until delisted.
 #[test]
-fn check_in_clears_a_pending_resale_listing() {
+fn check_in_rejects_resale_listed_ticket() {
     let (env, client, _token, _token_asset, _admin, organizer) = setup();
     make_event(&env, &client, &organizer, 1);
     let buyer = Address::generate(&env);
@@ -643,6 +642,10 @@ fn check_in_clears_a_pending_resale_listing() {
     client.list_for_resale(&buyer, &ticket_id, &1_100i128);
     assert_eq!(client.get_ticket(&ticket_id).resale_price, 1_100);
 
+    let result = client.try_check_in(&organizer, &ticket_id);
+    assert_eq!(result, Err(Ok(Error::ResaleListingActive)));
+
+    client.cancel_resale(&buyer, &ticket_id);
     client.check_in(&organizer, &ticket_id);
 
     let ticket = client.get_ticket(&ticket_id);
@@ -699,9 +702,9 @@ fn check_in_batch_marks_all_tickets_used() {
     assert_eq!(client.get_ticket(&t2).status, TicketStatus::Used);
 }
 
-/// Issue #131: the batch path clears listings too, not just `check_in`.
+/// Issue #132: check_in_batch rejects any ticket in Resale status.
 #[test]
-fn check_in_batch_clears_pending_resale_listings() {
+fn check_in_batch_rejects_resale_listed_tickets() {
     let (env, client, _token, _token_asset, _admin, organizer) = setup();
     make_event(&env, &client, &organizer, 1);
     let buyer = Address::generate(&env);
@@ -721,15 +724,16 @@ fn check_in_batch_clears_pending_resale_listings() {
         &String::from_str(&env, "2"),
         &1_000i128,
     );
-    // Only the first ticket is listed; the second stays unlisted. Both must
-    // come back with a cleared price.
     client.list_for_resale(&buyer, &t1, &1_100i128);
-    assert_eq!(client.get_ticket(&t1).resale_price, 1_100);
 
     let mut batch = Vec::new(&env);
     batch.push_back(t1);
     batch.push_back(t2);
 
+    let result = client.try_check_in_batch(&organizer, &batch);
+    assert_eq!(result, Err(Ok(Error::ResaleListingActive)));
+
+    client.cancel_resale(&buyer, &t1);
     client.check_in_batch(&organizer, &batch);
 
     for ticket_id in [t1, t2] {

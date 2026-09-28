@@ -90,4 +90,6 @@ pub enum Error {
     SelfPurchase = 40,
     /// The caller is not on the admin-managed organizer allowlist.
     OrganizerNotApproved = 41,
+    /// The ticket is listed for resale and cannot be checked in until cancelled.
+    ResaleListingActive = 42,
 }
