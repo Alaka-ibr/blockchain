@@ -1049,8 +1049,10 @@ impl TicketingContract {
     }
 
     /// Lists an owned, valid ticket on the resale marketplace. The price is
-    /// capped at the event's `max_resale_multiplier_bps` of the original
-    /// sale price to curb scalping.
+    /// capped at `original_price * max_resale_multiplier_bps / 10_000` using
+    /// integer division (truncating toward zero / rounding down). When the
+    /// intermediate product is not evenly divisible by 10_000, fractional
+    /// amounts round down so the effective cap never exceeds the nominal cap.
     pub fn list_for_resale(
         env: Env,
         owner: Address,
