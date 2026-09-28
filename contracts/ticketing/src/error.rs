@@ -88,4 +88,6 @@ pub enum Error {
     SelfTransfer = 39,
     /// The seller cannot buy their own resale listing.
     SelfPurchase = 40,
+    /// The caller is not on the admin-managed organizer allowlist.
+    OrganizerNotApproved = 41,
 }

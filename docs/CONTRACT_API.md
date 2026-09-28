@@ -12,7 +12,10 @@ clients do not break. It may be removed only in a future breaking deployment.
 | Function | Caller | Effect |
 |---|---|---|
 | `initialize(admin, payment_token)` | admin | One-time setup |
-| `create_event(organizer, event_id, name, category, max_resale_multiplier_bps, royalty_bps)` | organizer | Registers an event |
+| `approve_organizer(admin, organizer)` | admin | Adds an organizer to the event-creation allowlist (issue #135) |
+| `revoke_organizer(admin, organizer)` | admin | Removes an organizer from the allowlist; existing events are unaffected |
+| `is_approved_organizer(organizer)` | anyone | Whether an organizer may create events |
+| `create_event(organizer, event_id, name, category, max_resale_multiplier_bps, royalty_bps)` | approved organizer | Registers an event; see [ORGANIZER_ALLOWLIST.md](ORGANIZER_ALLOWLIST.md) |
 | `issue_ticket(organizer, event_id, to, tier, seat, price)` | organizer | Mints a ticket (off-chain payment already settled) |
 | `set_tier_price(organizer, event_id, tier, price)` | organizer | Sets the primary sale price for a tier (issue #127) |
 | `purchase_primary(buyer, event_id, tier, seat)` | buyer | On-chain primary sale at the tier price + mint |
@@ -35,6 +38,6 @@ clients do not break. It may be removed only in a future breaking deployment.
 ## Error codes
 
 See [`ERRORS.md`](ERRORS.md) for the full table of every `Error` variant
-(1–34), which entry points return each one, and whether it is worth
+(1–41), which entry points return each one, and whether it is worth
 retrying. The enum itself lives in
 [`contracts/ticketing/src/error.rs`](../contracts/ticketing/src/error.rs).
