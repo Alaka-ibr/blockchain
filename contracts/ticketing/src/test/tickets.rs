@@ -1035,3 +1035,65 @@ fn revoke_ticket_clears_the_resale_listing_data() {
     assert_eq!(revoked.status, TicketStatus::Revoked);
     assert_eq!(revoked.resale_price, 0);
 }
+
+#[test]
+fn revoke_ticket_rejects_already_revoked_ticket() {
+    let (env, client, _token, _token_asset, _admin, organizer) = setup();
+    make_event(&env, &client, &organizer, 1);
+    let buyer = Address::generate(&env);
+    let ticket_id = client.issue_ticket(
+        &organizer,
+        &1,
+        &buyer,
+        &String::from_str(&env, "GA"),
+        &String::from_str(&env, "1"),
+        &1_000i128,
+    );
+
+    client.revoke_ticket(&organizer, &ticket_id);
+    assert_eq!(client.get_ticket(&ticket_id).status, TicketStatus::Revoked);
+
+    let result = client.try_revoke_ticket(&organizer, &ticket_id);
+    assert_eq!(result, Err(Ok(Error::Revoked)));
+}
+
+#[test]
+fn revoke_with_refund_rejects_already_revoked_ticket() {
+    let (env, client, _token, _token_asset, _admin, organizer) = setup();
+    make_event(&env, &client, &organizer, 1);
+    let buyer = Address::generate(&env);
+    let ticket_id = client.issue_ticket(
+        &organizer,
+        &1,
+        &buyer,
+        &String::from_str(&env, "GA"),
+        &String::from_str(&env, "1"),
+        &1_000i128,
+    );
+
+    client.revoke_ticket(&organizer, &ticket_id);
+    let result = client.try_revoke_with_refund(&organizer, &ticket_id, &false);
+    assert_eq!(result, Err(Ok(Error::Revoked)));
+}
+
+#[test]
+fn revoke_batch_rejects_already_revoked_ticket() {
+    let (env, client, _token, _token_asset, _admin, organizer) = setup();
+    make_event(&env, &client, &organizer, 1);
+    let buyer = Address::generate(&env);
+    let ticket_id = client.issue_ticket(
+        &organizer,
+        &1,
+        &buyer,
+        &String::from_str(&env, "GA"),
+        &String::from_str(&env, "1"),
+        &1_000i128,
+    );
+
+    client.revoke_ticket(&organizer, &ticket_id);
+    let mut batch = Vec::new(&env);
+    batch.push_back(ticket_id);
+
+    let result = client.try_revoke_batch(&organizer, &batch);
+    assert_eq!(result, Err(Ok(Error::Revoked)));
+}

@@ -920,6 +920,10 @@ impl TicketingContract {
     /// Fraud prevention: organizer voids a ticket (chargeback, counterfeit
     /// report, policy violation). Revoked tickets can never be transferred,
     /// resold, or checked in again.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Error::Revoked` if the ticket has already been revoked.
     pub fn revoke_ticket(env: Env, organizer: Address, ticket_id: u64) -> Result<(), Error> {
         Self::extend_instance_ttl(&env);
         organizer.require_auth();
@@ -927,6 +931,9 @@ impl TicketingContract {
         let event = Self::get_event_inner(&env, ticket.event_id)?;
         if event.organizer != organizer {
             return Err(Error::NotOrganizer);
+        }
+        if ticket.status == TicketStatus::Revoked {
+            return Err(Error::Revoked);
         }
         ticket.status = TicketStatus::Revoked;
         // A revoked ticket must not keep a live resale asking price (issue
@@ -966,6 +973,10 @@ impl TicketingContract {
     /// token before the ticket is voided — the revocation remains
     /// permanent afterwards. Without a refund, behavior matches
     /// `revoke_ticket`. Revoking a used ticket is rejected either way.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Error::Revoked` if the ticket has already been revoked.
     pub fn revoke_with_refund(
         env: Env,
         organizer: Address,
@@ -982,6 +993,9 @@ impl TicketingContract {
         if ticket.status == TicketStatus::Used {
             return Err(Error::AlreadyUsed);
         }
+        if ticket.status == TicketStatus::Revoked {
+            return Err(Error::Revoked);
+        }
         if refund && ticket.original_price > 0 {
             let token_client =
                 token::Client::new(&env, &Self::payment_token_for_event(&env, &event)?);
@@ -995,6 +1009,10 @@ impl TicketingContract {
 
     /// Mass revocation of tickets by the event organizer (chargeback, policy violation).
     /// Bounded by `MAX_BATCH_SIZE`.
+    ///
+    /// # Errors
+    ///
+    /// Returns `Error::Revoked` if any ticket in the batch has already been revoked.
     pub fn revoke_batch(env: Env, organizer: Address, ticket_ids: Vec<u64>) -> Result<(), Error> {
         Self::extend_instance_ttl(&env);
         organizer.require_auth();
@@ -1009,6 +1027,9 @@ impl TicketingContract {
             let event = Self::get_event_inner(&env, ticket.event_id)?;
             if event.organizer != organizer {
                 return Err(Error::NotOrganizer);
+            }
+            if ticket.status == TicketStatus::Revoked {
+                return Err(Error::Revoked);
             }
             ticket.status = TicketStatus::Revoked;
             Self::remove_gift_claim(&env, ticket_id);

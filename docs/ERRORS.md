@@ -100,7 +100,7 @@ are reachable from a "not found" or a role check.
 | 6 | every organizer-authorized entry point |
 | 7 | every owner-authorized entry point |
 | 8 | `transfer_ticket`, `transfer_batch`, `create_gift_claim`, `claim_gift`, `check_in`, `check_in_batch`, `revoke_with_refund` |
-| 9 | `transfer_ticket`, `transfer_batch`, `create_gift_claim`, `claim_gift`, `check_in`, `check_in_batch`, `set_seat` |
+| 9 | `transfer_ticket`, `transfer_batch`, `create_gift_claim`, `claim_gift`, `check_in`, `check_in_batch`, `set_seat`, `revoke_ticket`, `revoke_with_refund`, `revoke_batch` |
 
 | Entry point | Error codes it can return |
 |---|---|
@@ -125,10 +125,10 @@ are reachable from a "not found" or a role check.
 | `verify_tickets` | 5, 27, 28 |
 | `check_in` | 3, 5, 6, 8, 9 |
 | `check_in_batch` | 3, 5, 6, 8, 9, 27, 28 |
-| `revoke_ticket` | 3, 5, 6 |
+| `revoke_ticket` | 3, 5, 6, 9 |
 | `set_seat` | 3, 5, 6, 9 |
-| `revoke_with_refund` | 2, 3, 5, 6, 8 |
-| `revoke_batch` | 3, 5, 6, 27, 28 |
+| `revoke_with_refund` | 2, 3, 5, 6, 8, 9 |
+| `revoke_batch` | 3, 5, 6, 9, 27, 28 |
 | `list_for_resale` | 3, 5, 7, 8, 9, 11, 12, 21, 34 |
 | `cancel_resale` | 5, 7, 10 |
 | `buy_resale` | 2, 3, 5, 10, 21, 33 |
