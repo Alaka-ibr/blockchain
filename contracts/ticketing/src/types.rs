@@ -188,4 +188,7 @@ pub enum DataKey {
     LastPurchaseLedger(Address),
     /// Minimum ledger spacing enforced between a buyer's primary purchases.
     MinPurchaseSpacing,
+    /// Presence marks an organizer the admin has approved to create events
+    /// (issue #135).
+    ApprovedOrganizer(Address),
 }

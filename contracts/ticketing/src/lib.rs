@@ -16,8 +16,8 @@ pub use constants::{
 };
 pub use error::Error;
 pub use events::{
-    ContractInitialized, PaymentTokenChanged, PaymentTokenProposed, PurchaseThrottleUpdated,
-    TicketCheckedIn, TicketIssued,
+    ContractInitialized, OrganizerApproved, OrganizerRevoked, PaymentTokenChanged,
+    PaymentTokenProposed, PurchaseThrottleUpdated, TicketCheckedIn, TicketIssued,
 };
 pub use types::{
     Category, DataKey, Event, GiftClaim, PendingPaymentToken, StoredTicket, Ticket, TicketStatus,
@@ -162,9 +162,45 @@ impl TicketingContract {
         Ok(())
     }
 
+    /// Adds `organizer` to the allowlist of addresses permitted to create
+    /// events (issue #135). Idempotent. See `docs/ORGANIZER_ALLOWLIST.md`.
+    pub fn approve_organizer(env: Env, admin: Address, organizer: Address) -> Result<(), Error> {
+        Self::extend_instance_ttl(&env);
+        Self::require_admin(&env, &admin)?;
+        let key = DataKey::ApprovedOrganizer(organizer.clone());
+        env.storage().persistent().set(&key, &true);
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, LEDGER_THRESHOLD, LEDGER_BUMP);
+        OrganizerApproved { admin, organizer }.publish(&env);
+        Ok(())
+    }
+
+    /// Removes `organizer` from the event-creation allowlist (issue #135).
+    /// Events the organizer already created are unaffected; only new
+    /// `create_event*` calls are blocked. Idempotent.
+    pub fn revoke_organizer(env: Env, admin: Address, organizer: Address) -> Result<(), Error> {
+        Self::extend_instance_ttl(&env);
+        Self::require_admin(&env, &admin)?;
+        env.storage()
+            .persistent()
+            .remove(&DataKey::ApprovedOrganizer(organizer.clone()));
+        OrganizerRevoked { admin, organizer }.publish(&env);
+        Ok(())
+    }
+
+    /// Whether `organizer` is currently allowed to create events.
+    pub fn is_approved_organizer(env: Env, organizer: Address) -> bool {
+        env.storage()
+            .persistent()
+            .has(&DataKey::ApprovedOrganizer(organizer))
+    }
+
     /// Registers a new event/route/showing under an organizer. `event_id` is
     /// chosen by the caller's backend (e.g. a ULID cast to u64) so it can be
-    /// correlated with the off-chain event record.
+    /// correlated with the off-chain event record. Only organizers on the
+    /// admin-managed allowlist may call this, so an arbitrary address cannot
+    /// squat on an id the backend is about to use (issue #135).
     pub fn create_event(
         env: Env,
         organizer: Address,
@@ -1299,6 +1335,20 @@ impl TicketingContract {
         env.storage()
             .persistent()
             .extend_ttl(&key, LEDGER_THRESHOLD, LEDGER_BUMP);
+    }
+
+    /// Rejects event creation by an address that is not on the organizer
+    /// allowlist (issue #135). Called after `require_auth()` so the
+    /// auth-before-business-validation ordering is preserved.
+    fn require_approved_organizer(env: &Env, organizer: &Address) -> Result<(), Error> {
+        let key = DataKey::ApprovedOrganizer(organizer.clone());
+        if !env.storage().persistent().has(&key) {
+            return Err(Error::OrganizerNotApproved);
+        }
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, LEDGER_THRESHOLD, LEDGER_BUMP);
+        Ok(())
     }
 
     fn require_admin(env: &Env, admin: &Address) -> Result<(), Error> {

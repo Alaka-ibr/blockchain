@@ -76,11 +76,25 @@ stellar contract invoke \
     --admin <admin-address>
 ```
 
+### approve_organizer
+
+Allow an organizer to create events. Event creation is restricted to approved organizers so that no one else can squat on the backend's event ids (see [ORGANIZER_ALLOWLIST.md](ORGANIZER_ALLOWLIST.md)). Use `revoke_organizer` with the same arguments to remove an organizer.
+
+```bash
+stellar contract invoke \
+  --id <contract-id> \
+  --source <admin> \
+  --network testnet \
+  -- approve_organizer \
+    --admin <admin-address> \
+    --organizer <organizer-address>
+```
+
 ## Event management
 
 ### create_event
 
-Create an event. The `event_id` is chosen by the caller (typically a ULID cast to u64) so it can be correlated with the backend's database.
+Create an event. The organizer must first be approved with `approve_organizer`. The `event_id` is chosen by the caller (typically a ULID cast to u64) so it can be correlated with the backend's database.
 
 ```bash
 stellar contract invoke \
@@ -534,7 +548,7 @@ stellar contract invoke --id <contract-id> \
 ## Error codes
 
 If a call fails, look up the error code in
-[`ERRORS.md`](ERRORS.md), which lists every `Error` variant (1–34),
+[`ERRORS.md`](ERRORS.md), which lists every `Error` variant (1–41),
 the entry points that return it, and whether it is worth retrying. The
 enum itself is in
 [`error.rs`](../contracts/ticketing/src/error.rs).

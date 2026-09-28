@@ -31,6 +31,8 @@ pub fn setup<'a>() -> (
     let contract_id = env.register(TicketingContract, ());
     let client = TicketingContractClient::new(&env, &contract_id);
     client.initialize(&admin, &token_contract.address());
+    // Event creation is restricted to allowlisted organizers (issue #135).
+    client.approve_organizer(&admin, &organizer);
 
     (env, client, token, token_asset, admin, organizer)
 }
