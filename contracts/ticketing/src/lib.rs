@@ -19,7 +19,9 @@ pub use events::{
     ContractInitialized, OrganizerApproved, OrganizerRevoked, PaymentTokenChanged,
     PaymentTokenProposed, PurchaseThrottleUpdated, TicketCheckedIn, TicketIssued,
 };
-pub use types::{Category, DataKey, Event, GiftClaim, PendingPaymentToken, Ticket, TicketStatus};
+pub use types::{
+    Category, DataKey, Event, GiftClaim, PendingPaymentToken, StoredTicket, Ticket, TicketStatus,
+};
 
 use soroban_sdk::{contract, contractimpl, token, Address, Bytes, BytesN, Env, String, Vec};
 
@@ -81,12 +83,16 @@ impl TicketingContract {
             .extend_ttl(LEDGER_THRESHOLD, LEDGER_BUMP);
     }
 
-    /// Rejects a string that is empty or longer than `max_len` bytes.
-    ///
-    /// Shared by the event `name`/`category` (Issue #125) and the ticket
-    /// `tier`/`seat` (Issue #126) validators so every label has one rule.
-    fn validate_label(value: &String, max_len: u32) -> Result<(), Error> {
-        let len = value.len();
+    fn require_initialized(env: &Env) -> Result<(), Error> {
+        if env.storage().instance().has(&DataKey::Admin) {
+            Ok(())
+        } else {
+            Err(Error::NotInitialized)
+        }
+    }
+
+    fn validate_label(label: &String, max_len: u32) -> Result<(), Error> {
+        let len = label.len();
         if len == 0 {
             return Err(Error::EmptyNameOrCategory);
         }
@@ -232,6 +238,7 @@ impl TicketingContract {
     ) -> Result<(), Error> {
         Self::extend_instance_ttl(&env);
         organizer.require_auth();
+        Self::require_initialized(&env)?;
         Self::require_approved_organizer(&env, &organizer)?;
         if royalty_bps > 10_000 {
             return Err(Error::InvalidRoyalty);
@@ -300,7 +307,9 @@ impl TicketingContract {
         min_resale_multiplier_bps: Option<u32>,
         max_transfers_per_ticket: Option<u32>,
     ) -> Result<(), Error> {
+        Self::extend_instance_ttl(&env);
         organizer.require_auth();
+        Self::require_initialized(&env)?;
         Self::require_approved_organizer(&env, &organizer)?;
         if royalty_bps > 10_000 {
             return Err(Error::InvalidRoyalty);
@@ -460,6 +469,8 @@ impl TicketingContract {
     /// when one is set, otherwise the contract-wide payment token
     /// (issue #235).
     pub fn event_payment_token(env: Env, event_id: u64) -> Result<Address, Error> {
+        Self::extend_instance_ttl(&env);
+        Self::require_initialized(&env)?;
         let event = Self::get_event_inner(&env, event_id)?;
         Self::payment_token_for_event(&env, &event)
     }
@@ -477,6 +488,7 @@ impl TicketingContract {
     ) -> Result<u64, Error> {
         Self::extend_instance_ttl(&env);
         organizer.require_auth();
+        Self::require_initialized(&env)?;
         if price < 0 {
             return Err(Error::InvalidPrice);
         }
@@ -560,6 +572,7 @@ impl TicketingContract {
     ) -> Result<u64, Error> {
         Self::extend_instance_ttl(&env);
         buyer.require_auth();
+        Self::require_initialized(&env)?;
         // Issue #126: bound tier/seat so they cannot inflate per-ticket
         // storage cost and rent. Validated before the throttle and the tier
         // price lookup so an oversized label is rejected on its own terms.
@@ -817,14 +830,15 @@ impl TicketingContract {
     /// new integrations should call `get_ticket`.
     #[deprecated(note = "use get_ticket; verify_ticket is retained for ABI compatibility")]
     pub fn verify_ticket(env: Env, ticket_id: u64) -> Result<Ticket, Error> {
-        Self::get_ticket(env, ticket_id)
+        Self::require_initialized(&env)?;
+        Self::get_ticket_inner(&env, ticket_id)
     }
 
     /// Returns whether a ticket exists, belongs to `owner`, and is valid for
     /// entry. Missing tickets return `false` so scanners can use this as a
     /// single boolean check without handling a contract error.
     pub fn is_valid(env: Env, ticket_id: u64, owner: Address) -> bool {
-        match Self::get_ticket(env, ticket_id) {
+        match Self::get_ticket_inner(&env, ticket_id) {
             Ok(ticket) => ticket.owner == owner && ticket.status == TicketStatus::Valid,
             Err(_) => false,
         }
@@ -834,7 +848,7 @@ impl TicketingContract {
     /// Allows scanners to inspect multiple tickets in one call.
     /// Bounded by `MAX_BATCH_SIZE`.
     pub fn verify_tickets(env: Env, ticket_ids: Vec<u64>) -> Result<Vec<Ticket>, Error> {
-        Self::extend_instance_ttl(&env);
+        Self::require_initialized(&env)?;
         if ticket_ids.is_empty() {
             return Err(Error::EmptyBatch);
         }
@@ -1077,7 +1091,8 @@ impl TicketingContract {
         if Self::resale_closed(&env, &event) {
             return Err(Error::ResaleClosed);
         }
-        let cap = ticket.original_price * event.max_resale_multiplier_bps as i128 / 10_000;
+        let cap = ticket.original_price * event.max_resale_multiplier_bps as i128
+            / BPS_DENOMINATOR as i128;
         if price > cap {
             return Err(Error::ResalePriceExceedsCap);
         }
@@ -1205,6 +1220,7 @@ impl TicketingContract {
     ///
     /// Returns `Error::EventNotFound` when no event with `event_id` exists.
     pub fn get_event(env: Env, event_id: u64) -> Result<Event, Error> {
+        Self::require_initialized(&env)?;
         Self::get_event_inner(&env, event_id)
     }
 
@@ -1214,7 +1230,18 @@ impl TicketingContract {
     ///
     /// Returns `Error::TicketNotFound` when no ticket with `ticket_id` exists.
     pub fn get_ticket(env: Env, ticket_id: u64) -> Result<Ticket, Error> {
+        Self::require_initialized(&env)?;
         Self::get_ticket_inner(&env, ticket_id)
+    }
+
+    /// Permissionless public storage-rent renewal for a ticket record.
+    ///
+    /// Anyone can pay transaction fees to keep a ticket alive, but the call
+    /// does not mutate ownership, lifecycle, pricing, or event state.
+    pub fn extend_ticket_ttl(env: Env, ticket_id: u64) -> Result<(), Error> {
+        Self::extend_instance_ttl(&env);
+        Self::require_initialized(&env)?;
+        Self::bump_ticket_ttl(&env, ticket_id)
     }
 
     /// Returns the number of events registered by `organizer`.
@@ -1243,12 +1270,23 @@ impl TicketingContract {
 
     fn get_ticket_inner(env: &Env, ticket_id: u64) -> Result<Ticket, Error> {
         let key = DataKey::Ticket(ticket_id);
-        let ticket = env
+        let stored: StoredTicket = env
             .storage()
             .persistent()
             .get(&key)
             .ok_or(Error::TicketNotFound)?;
-        Ok(ticket)
+        Self::unpack_ticket(stored)
+    }
+
+    fn bump_ticket_ttl(env: &Env, ticket_id: u64) -> Result<(), Error> {
+        let key = DataKey::Ticket(ticket_id);
+        if !env.storage().persistent().has(&key) {
+            return Err(Error::TicketNotFound);
+        }
+        env.storage()
+            .persistent()
+            .extend_ttl(&key, LEDGER_THRESHOLD, LEDGER_BUMP);
+        Ok(())
     }
 
     fn increment_tickets_issued(env: &Env, event_id: u64, amount: u64) {
@@ -1290,7 +1328,9 @@ impl TicketingContract {
 
     fn save_ticket(env: &Env, ticket_id: u64, ticket: &Ticket) {
         let key = DataKey::Ticket(ticket_id);
-        env.storage().persistent().set(&key, ticket);
+        env.storage()
+            .persistent()
+            .set(&key, &Self::pack_ticket(ticket));
         env.storage()
             .persistent()
             .extend_ttl(&key, LEDGER_THRESHOLD, LEDGER_BUMP);
@@ -1440,6 +1480,52 @@ impl TicketingContract {
         }
         .publish(env);
         ticket_id
+    }
+
+    fn pack_ticket(ticket: &Ticket) -> StoredTicket {
+        StoredTicket {
+            event_id: ticket.event_id,
+            owner: ticket.owner.clone(),
+            tier: ticket.tier.clone(),
+            seat: ticket.seat.clone(),
+            lifecycle: ((ticket.transfers as u64) << 8) | Self::status_code(&ticket.status),
+            original_price: ticket.original_price,
+            resale_price: ticket.resale_price,
+        }
+    }
+
+    fn unpack_ticket(stored: StoredTicket) -> Result<Ticket, Error> {
+        let status_code = stored.lifecycle & 0xff;
+        let transfers = (stored.lifecycle >> 8) as u32;
+        Ok(Ticket {
+            event_id: stored.event_id,
+            owner: stored.owner,
+            tier: stored.tier,
+            seat: stored.seat,
+            status: Self::status_from_code(status_code)?,
+            original_price: stored.original_price,
+            resale_price: stored.resale_price,
+            transfers,
+        })
+    }
+
+    fn status_code(status: &TicketStatus) -> u64 {
+        match status {
+            TicketStatus::Valid => 0,
+            TicketStatus::Used => 1,
+            TicketStatus::Revoked => 2,
+            TicketStatus::Resale => 3,
+        }
+    }
+
+    fn status_from_code(code: u64) -> Result<TicketStatus, Error> {
+        match code {
+            0 => Ok(TicketStatus::Valid),
+            1 => Ok(TicketStatus::Used),
+            2 => Ok(TicketStatus::Revoked),
+            3 => Ok(TicketStatus::Resale),
+            _ => Err(Error::InvalidTicketLifecycle),
+        }
     }
 }
 

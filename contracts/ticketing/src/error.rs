@@ -92,4 +92,6 @@ pub enum Error {
     OrganizerNotApproved = 41,
     /// The ticket is listed for resale and cannot be checked in until cancelled.
     ResaleListingActive = 42,
+    /// A stored ticket lifecycle word contains an unknown status code.
+    InvalidTicketLifecycle = 43,
 }
